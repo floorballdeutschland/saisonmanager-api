@@ -165,6 +165,21 @@ module Admin
       assert_nil secondary.reload.merged_into_id
     end
 
+    test 'Zusammenfuehren macht die kleinere Nummer zum Master, auch von der anderen Seite aus' do
+      club = create(:club)
+      small = create(:referee, club_id: club.id, lizenznummer: 921)
+      large = create(:referee, club_id: club.id, lizenznummer: 3454)
+      login(@admin)
+
+      post "/api/v2/admin/referees/#{large.id}/merge", params: { secondary_id: small.id }
+
+      assert_response :success
+      assert_equal small.id, response.parsed_body['master_id']
+      assert_equal '921', response.parsed_body['master_lizenznummer_display']
+      assert_equal small.id, large.reload.merged_into_id
+      assert_nil small.reload.merged_into_id
+    end
+
     test 'Admin darf Schiris bearbeiten' do
       club = create(:club)
       referee = create(:referee, club_id: club.id, vorname: 'Alt')

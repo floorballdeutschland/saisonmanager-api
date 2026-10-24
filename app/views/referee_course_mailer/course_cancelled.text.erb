@@ -1,0 +1,5 @@
+Hallo <%= @first_name %>,
+
+der Kurs „<%= @course.title %>“ ist abgesagt. Die Anmeldung von <%= @name %> ist damit hinfällig, es fällt keine Gebühr an.
+
+Bei Fragen hilft die Kursorganisation<%= " (#{@course.contact_email})" if @course.contact_email.present? %>.

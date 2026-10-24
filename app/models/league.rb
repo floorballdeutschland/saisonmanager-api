@@ -345,6 +345,11 @@ class League < ApplicationRecord
 
       legacy_league:,
       field_size:,
+      # Feldgroesse samt Erbe der Hauptrunde (LeagueCompetition): Zwischen- und
+      # Endrunden bleiben oft ohne eigene `field_size`. Das Frontend zeichnet
+      # damit das Spielfeld im Tabletmodus und im Schussbild (fe#592). Kostet nur
+      # bei leerer `field_size` mit Hauptrunde eine Abfrage.
+      effective_field_size:,
       league_modus:,
       competition_group:,
       has_preround:,
@@ -949,7 +954,8 @@ class League < ApplicationRecord
   # einer Liga zeigt das Datum; die Verbandsuebersicht laedt ueber ALLE Ligen
   # einer Saison und wuerde die Abfrage sonst fuer nichts bezahlen.
   def self.licenses_for(leagues, full_license_hash: true, only_current_licenses: true, team_hash: :full,
-                        with_other_licenses: true, with_release_dates: true, statuses: License::ACTIVE_STATUSES)
+                        with_other_licenses: true, with_release_dates: true, statuses: License::ACTIVE_STATUSES,
+                        all_team_licenses: false)
     leagues = Array(leagues)
     return {} if leagues.empty?
 
@@ -967,7 +973,8 @@ class League < ApplicationRecord
       [league.id, league.build_license_items(teams_by_league[league.id] || [], team_licenses, teams_by_id,
                                              full_license_hash, only_current_licenses,
                                              team_hash, with_other_licenses,
-                                             context: { release_dates:, suspensions:, statuses: })]
+                                             context: { release_dates:, suspensions:, statuses:,
+                                                        all_team_licenses: })]
     end
   end
 
@@ -1079,9 +1086,11 @@ class League < ApplicationRecord
     #
     # Vorgabe der Statusgrenze bleibt erteilt/beantragt: Wer den Kader einer
     # Liga abfragt, meint die spielberechtigten und die offenen Anträge. Nur
-    # die Verbandsübersicht (Admin::LicensesController) weitet sie aus, weil
-    # sie einen Statusfilter samt Widerruf-Knopf für abgelehnte Anträge
-    # anbietet -- und der lief bis hierher ins Leere.
+    # die Verbandsübersicht (Admin::LicensesController) weitet sie aus: Sie
+    # bietet einen Statusfilter samt Widerruf-Knopf für abgelehnte Anträge an
+    # und soll jede beantragte Lizenz zeigen, auch die später ungültigen
+    # (#787). Dazu setzt sie :all_team_licenses, damit mehrere Lizenzen
+    # desselben Spielers bei derselben Mannschaft je eine Zeile bekommen.
     #
     # License::ACTIVE_STATUSES bleibt davon unberührt: Es steuert weiter die
     # WEITEREN Lizenzen je Spieler (other_license_items), die als "weitere
@@ -1089,6 +1098,7 @@ class League < ApplicationRecord
     release_dates = context[:release_dates] || {}
     suspensions   = context[:suspensions] || {}
     statuses      = context[:statuses] || License::ACTIVE_STATUSES
+    all_team_licenses = context[:all_team_licenses] || false
 
     result = []
     league_teams.each do |team|
@@ -1097,70 +1107,90 @@ class League < ApplicationRecord
 
       team_item[:players] = []
       (team_licenses[team.id] || []).each do |player|
-        license = player.license_for_team(team.id, season_id:)
-        next unless license
+        # Die Kaderlisten zeigen je Spieler und Mannschaft genau eine Lizenz,
+        # die aktive vor der zuletzt geaenderten. Die Verbandsuebersicht will
+        # jede jemals beantragte Lizenz als eigene Zeile sehen (#787): Neben
+        # einer neueren erteilten Lizenz bliebe eine geloeschte sonst unsichtbar.
+        team_lics = if all_team_licenses
+                      player.licenses_for_team(team.id, season_id:)
+                    else
+                      [player.license_for_team(team.id, season_id:)].compact
+                    end
+        player_hash = nil
 
-        player_item = player.full_hash(full_license_hash, only_current_licenses)
+        team_lics.each do |license|
+          # full_hash einmal je Spieler; jede weitere Zeile bekommt eine flache
+          # Kopie, weil team_license und other_licenses je Zeile gesetzt werden.
+          player_hash ||= player.full_hash(full_license_hash, only_current_licenses)
+          player_item = team_lics.size > 1 ? player_hash.dup : player_hash
 
-        # Maßgeblich ist der Status, den die Lizenz OHNE Sperre hätte. Eine
-        # Mannschaft hängt über cup_leagues auch an ihren Pokalligen, dieselbe
-        # Lizenz steht also in dieser Liste und in der des Pokals; der
-        # gespeicherte Sperrstatus kann nur einer der beiden gerecht werden.
-        # Bis #605 filterte diese Stelle hart auf erteilt/beantragt, und eine
-        # gesperrte Lizenz verschwand deshalb aus JEDER Liste -- auch aus der
-        # des Pokals, in dem der Spieler weiterhin spielen darf.
-        base_status = LicenseEffectiveStatus.base_entry(license)
-        next unless base_status
+          # Maßgeblich ist der Status, den die Lizenz OHNE Sperre hätte. Eine
+          # Mannschaft hängt über cup_leagues auch an ihren Pokalligen, dieselbe
+          # Lizenz steht also in dieser Liste und in der des Pokals; der
+          # gespeicherte Sperrstatus kann nur einer der beiden gerecht werden.
+          # Bis #605 filterte diese Stelle hart auf erteilt/beantragt, und eine
+          # gesperrte Lizenz verschwand deshalb aus JEDER Liste -- auch aus der
+          # des Pokals, in dem der Spieler weiterhin spielen darf.
+          base_status = LicenseEffectiveStatus.base_entry(license)
+          next unless base_status
 
-        base_status_id = base_status['license_status_id']
-        next unless statuses.include?(base_status_id.to_i)
+          base_status_id = base_status['license_status_id']
+          next unless statuses.include?(base_status_id.to_i)
 
-        # Greift eine aktive Sperre auf diese Lizenz in DIESER Liga? Gefragt
-        # wird das nur für eine erteilte oder beantragte Lizenz: Eine Sperre
-        # setzt die Spielberechtigung aus, und ein abgelehnter Antrag hat
-        # keine. Ohne diese Grenze trüge er in der Verbandsübersicht den
-        # Status "gesperrt" statt "abgelehnt", sobald der Spieler irgendwo
-        # gesperrt ist -- und der Widerruf-Knopf hängt am Status.
-        base_active = License::ACTIVE_STATUSES.include?(base_status_id.to_i)
-        suspension = Array(suspensions[player.id]).find { |s| s.covers_license_in?(self, team) } if base_active
-        last_status_id = suspension ? License::SUSPENDED : base_status_id
-        last_status_code = License::NAMES[last_status_id.to_i]
+          # Greift eine aktive Sperre auf diese Lizenz in DIESER Liga? Gefragt
+          # wird das nur für eine erteilte oder beantragte Lizenz: Eine Sperre
+          # setzt die Spielberechtigung aus, und ein abgelehnter Antrag hat
+          # keine. Ohne diese Grenze trüge er in der Verbandsübersicht den
+          # Status "gesperrt" statt "abgelehnt", sobald der Spieler irgendwo
+          # gesperrt ist -- und der Widerruf-Knopf hängt am Status.
+          base_active = License::ACTIVE_STATUSES.include?(base_status_id.to_i)
+          suspension = Array(suspensions[player.id]).find { |s| s.covers_license_in?(self, team) } if base_active
+          last_status_id = suspension ? License::SUSPENDED : base_status_id
+          last_status_code = License::NAMES[last_status_id.to_i]
 
-        # .to_i wie zwei Zeilen darueber: Die Status-ID liegt in der JSONB-History
-        # nicht typgarantiert vor. Ohne die Umwandlung stand eine Lizenz mit
-        # '1'/'2' als String zwar in der Liste, aber ohne Beantragungs- und
-        # Erteilungsdatum -- seit die Lizenzliste beide zeigt, ist das kein
-        # kosmetischer Mangel mehr.
-        #
-        # Das Erteilungsdatum kommt aus dem Basis-Eintrag: Eine gesperrte Lizenz
-        # ist erteilt, und ohne den Rückgriff stünde die Zeile ohne Datum da.
-        approved_at = (base_status['created_at'].to_datetime if base_status_id.to_i == 1)
-        # Juengster Antrag nach Zeitpunkt wie in Team#licenses, sonst zeigen
-        # Mannschafts- und Ligaliste verschiedene Antragsdaten (#725).
-        requests = license['history'].select { |lh| lh['license_status_id'].to_i == 2 }
-        requested_at = requests.max_by { |h| LicenseEffectiveStatus.sort_key(h) }&.dig('created_at')&.then(&:to_datetime)
+          # .to_i wie zwei Zeilen darueber: Die Status-ID liegt in der JSONB-History
+          # nicht typgarantiert vor. Ohne die Umwandlung stand eine Lizenz mit
+          # '1'/'2' als String zwar in der Liste, aber ohne Beantragungs- und
+          # Erteilungsdatum -- seit die Lizenzliste beide zeigt, ist das kein
+          # kosmetischer Mangel mehr.
+          #
+          # Das Erteilungsdatum kommt aus dem Basis-Eintrag: Eine gesperrte Lizenz
+          # ist erteilt, und ohne den Rückgriff stünde die Zeile ohne Datum da.
+          approved_at = (base_status['created_at'].to_datetime if base_status_id.to_i == 1)
+          # Juengster Antrag nach Zeitpunkt wie in Team#licenses, sonst zeigen
+          # Mannschafts- und Ligaliste verschiedene Antragsdaten (#725).
+          requests = license['history'].select { |lh| lh['license_status_id'].to_i == 2 }
+          requested_at = requests.max_by { |h| LicenseEffectiveStatus.sort_key(h) }&.dig('created_at')&.then(&:to_datetime)
 
-        player_item[:team_license] = {
-          license:,
-          last_status: suspension ? LicenseEffectiveStatus.current_entry(license) : base_status,
-          last_status_id:,
-          last_status_code:,
-          # Der Status ohne Sperre, damit die Oberfläche zeigen kann, worauf
-          # die Lizenz nach dem Ablauf zurückfällt.
-          base_status_id:,
-          suspension: suspension_item(suspension),
-          approved_at:,
-          requested_at:,
-          released_at: release_date_for(player, team_club_ids, release_dates)
-        }
+          shown_status = suspension ? LicenseEffectiveStatus.current_entry(license) : base_status
+          player_item[:team_license] = {
+            license:,
+            last_status: shown_status,
+            last_status_id:,
+            last_status_code:,
+            # Der Status ohne Sperre, damit die Oberfläche zeigen kann, worauf
+            # die Lizenz nach dem Ablauf zurückfällt.
+            base_status_id:,
+            # Die letzte Statusaenderung der Zeile: wann, wer und warum. Fuer eine
+            # geloeschte oder transferungueltige Lizenz ist das die einzige
+            # Auskunft, warum sie nicht mehr gilt (#787).
+            status_changed_at: shown_status&.dig('created_at'),
+            status_changed_by: shown_status&.dig('created_by').presence&.to_i,
+            status_reason: shown_status&.dig('reason').presence,
+            suspension: suspension_item(suspension),
+            approved_at:,
+            requested_at:,
+            released_at: release_date_for(player, team_club_ids, release_dates)
+          }
 
-        if with_other_licenses
-          player_item[:other_licenses] = other_license_items(player, team.id, teams_by_id, License::ACTIVE_STATUSES)
-          annotate_license_teams!(player_item, teams_by_id, Array(suspensions[player.id]),
-                                  row_team_id: team.id, row_status_id: last_status_id)
+          if with_other_licenses
+            player_item[:other_licenses] = other_license_items(player, team.id, teams_by_id, License::ACTIVE_STATUSES)
+            annotate_license_teams!(player_item, teams_by_id, Array(suspensions[player.id]),
+                                    row_team_id: team.id, row_status_id: last_status_id)
+          end
+
+          team_item[:players] << player_item
         end
-
-        team_item[:players] << player_item
       end
 
       result << team_item
@@ -1686,6 +1716,18 @@ class League < ApplicationRecord
           group_ids.include?(g.guest_team_id)
       end
 
+      # Der direkte Vergleich zählt erst, wenn jedes Paar der Punktgleichen
+      # mindestens einmal gegeneinander gespielt hat. Sonst vergleicht die
+      # Mini-Tabelle ungleich viele Duelle, und ein Team ohne Duell geht mit
+      # 0:0 neutral ein: Bei drei Teams auf gleichen Punkten, von denen eins
+      # noch gegen keins der anderen gespielt hatte, stand dieses vor dem Team,
+      # das ein Duell verloren hatte, auch bei viel schlechterer Tordifferenz
+      # (Liga 2599 am 11.10.2026).
+      unless all_pairs_played?(group_ids, h2h_games)
+        sorted.concat(group.sort_by { |r| [-r[:goals_diff], -r[:goals_scored]] })
+        next
+      end
+
       h2h = group.each_with_object({}) do |r, h|
         h[r[:team_id]] = { points: 0, goals_scored: 0, goals_received: 0 }
       end
@@ -1727,5 +1769,11 @@ class League < ApplicationRecord
     end
 
     sorted
+  end
+
+  def all_pairs_played?(team_ids, h2h_games)
+    played = h2h_games.to_set { |g| [g.home_team_id, g.guest_team_id].sort }
+
+    team_ids.to_a.combination(2).all? { |pair| played.include?(pair.sort) }
   end
 end

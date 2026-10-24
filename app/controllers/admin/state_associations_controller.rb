@@ -220,7 +220,7 @@ module Admin
                      express_license_enabled referee_license_review_enabled
                      manual_proceeding_creation referee_assignment_enabled
                      referee_assignment_external_enabled person_level_assignment_default
-                     coach_assignment_enabled
+                     coach_assignment_enabled course_club_confirmation_required
                      report_form_email_enabled requested_license_playable
                      team_info_editable_during_season
                      logo banner_link_url]

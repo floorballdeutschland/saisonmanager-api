@@ -68,8 +68,51 @@ module Rack
     # damit in dieselbe Kategorie wie MAIL_TRIGGER_PATHS. Der Key-Throttle weiter
     # unten hilft hier nicht: Er greift nur bei Keys mit gesetztem Rate-Limit, und
     # der Frontend-Key hat keines.
+    # Einwilligung der Erziehungsberechtigten zu einer Kursanmeldung. Der Token
+    # ist die Berechtigung, also gegen Durchprobieren drosseln.
+    throttle('course-guardian-consent/ip', limit: 30, period: 1.hour) do |req|
+      req.ip if req.path.start_with?('/api/v2/public/course_guardian_consents')
+    end
+
+    # Oeffentliche Kursanmeldung: jede Anmeldung loest eine Mail aus, die
+    # Links aus den Mails sind die Berechtigung. Die Liste selbst ist ohne
+    # API-Key erreichbar (Einbettung auf Verbandsseiten) und bekommt eine
+    # grosszuegige Drossel gegen Abgrasen.
+    throttle('course-registration/ip', limit: 10, period: 1.hour) do |req|
+      req.ip if req.post? && req.path.match?(%r{\A/api/v2/public/referee_courses/\d+/registrations})
+    end
+    throttle('course-registration-link/ip', limit: 30, period: 1.hour) do |req|
+      req.ip if req.path.start_with?('/api/v2/public/course_registrations')
+    end
+    throttle('course-list/ip', limit: 120, period: 1.minute) do |req|
+      req.ip if req.get? && req.path.start_with?('/api/v2/public/referee_courses')
+    end
+
     throttle('api-key-application/ip', limit: 10, period: 1.hour) do |req|
       req.ip if req.post? && req.path == '/api/v2/api_key_applications'
+    end
+
+    # Rückmeldung zum Tabletmodus (fe#560). Braucht zwar Login oder
+    # Sekretariats-Link, schreibt aber in ein festes Postfach; ein Link, der in
+    # falsche Hände gerät, soll es nicht fluten können. Offen gegen Endung und
+    # Schrägstrich am Ende: Der Router nimmt jedes `(.:format)` und räumt `/`
+    # weg, ein exakter Vergleich liesse `…/tablet_feedback.xml` ungezählt durch.
+    throttle('tablet-feedback/ip', limit: 10, period: 1.hour) do |req|
+      req.ip if req.post? && req.path.match?(%r{\A/+api/+v2/+games/+[^/]+/+tablet_feedback(\.[^/]*)?/*\z})
+    end
+
+    # Highlights bearbeiten (fe#560). Die Anfrage beim Beenden des Tabletmodus
+    # verschickt später eine Mail an eine frei eingegebene Adresse; der
+    # Mail-Link selbst ist die einzige Berechtigung und soll sich nicht
+    # durchprobieren lassen. Laden, Abspielen und mehrmaliges Speichern einer
+    # Kalibrierung bleiben weit unter der Grenze. Pfade offen gegen Endung und
+    # Schrägstrich, wie beim Feedback oben.
+    throttle('highlight-request/ip', limit: 10, period: 1.hour) do |req|
+      req.ip if req.post? && req.path.match?(%r{\A/+api/+v2/+games/+[^/]+/+highlight_request(\.[^/]*)?/*\z})
+    end
+
+    throttle('highlight-editor/ip', limit: 120, period: 1.hour) do |req|
+      req.ip if req.path.match?(%r{\A/+api/+v2/+highlight_editor(\.[^/]*)?/*\z})
     end
 
     # Abholen des genehmigten Keys über den Einmal-Link. Bewusst ein eigener,

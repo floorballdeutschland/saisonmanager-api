@@ -176,13 +176,310 @@ class RefereeObservationsControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes ids, other.id
   end
 
+  # Gast im Spielbericht: Freitext mit Lizenznummer 0, kein Referee-Datensatz.
+  test 'Gast im Spielbericht wird nicht bewertet und steht als Hinweis im Gespann' do
+    @game.update!(referee1_string: "#{@referee1.lizenznummer} Schiri, Anna",
+                  referee2_string: '0 Gast, Gustav',
+                  officiating_referee_ids: [@referee1.id, 0])
+    login(@coach_user)
+
+    get '/api/v2/referee/observations/games'
+    entry = JSON.parse(response.body).find { |g| g['game_id'] == @game.id }
+    assert_equal([@referee1.id], entry['referees'].map { |r| r['referee_id'] })
+    assert_equal ['Gustav Gast'], entry['unrated_referee_names']
+
+    post '/api/v2/referee/observations', params: payload, as: :json
+    assert_response :created
+    assert_equal [@referee1.id], RefereeObservation.last.ratings.map(&:referee_id)
+  end
+
+  # Ohne auflösbaren Bericht greift die Ansetzung, und dort kann ein Gast als
+  # Datensatz stehen. Bewertet wird er trotzdem nicht, auch wenn der Client eine
+  # Bewertung für ihn mitschickt.
+  test 'angesetzter Gast wird nicht bewertet, der Partner behaelt seinen Slot' do
+    guest = create(:referee, vorname: 'Kamil', nachname: 'Gast', guest: true, lizenznummer: nil)
+    @game.update!(officiating_referee_ids: [], nominated_referee_ids: [guest.id, @referee2.id])
+    login(@coach_user)
+
+    get '/api/v2/referee/observations/games'
+    entry = JSON.parse(response.body).find { |g| g['game_id'] == @game.id }
+    assert_equal([[@referee2.id, 2]], entry['referees'].map { |r| [r['referee_id'], r['position']] })
+    assert_equal ['Kamil Gast'], entry['unrated_referee_names']
+
+    body = payload
+    body[:ratings].first[:referee_id] = guest.id
+    post '/api/v2/referee/observations', params: body, as: :json
+    assert_response :created
+    rating = RefereeObservation.last.ratings.sole
+    assert_equal [@referee2.id, 2], [rating.referee_id, rating.position]
+  end
+
+  test 'Spiel mit reinem Gast-Gespann wird mit eigener Meldung abgewiesen' do
+    guest = create(:referee, vorname: 'Kamil', nachname: 'Gast', guest: true, lizenznummer: nil)
+    @game.update!(officiating_referee_ids: [], nominated_referee_ids: [guest.id])
+    login(@coach_user)
+
+    get '/api/v2/referee/observations/games'
+    entry = JSON.parse(response.body).find { |g| g['game_id'] == @game.id }
+    assert_empty entry['referees']
+    assert_equal ['Kamil Gast'], entry['unrated_referee_names']
+
+    assert_no_difference 'RefereeObservation.count' do
+      post '/api/v2/referee/observations', params: payload, as: :json
+    end
+    assert_response :unprocessable_entity
+    assert_includes response.body, 'Gastschiedsrichter werden nicht einzeln bewertet'
+  end
+
+  test 'Gast auf Slot 1 im Spielbericht: Partner bleibt Schiedsrichter 2' do
+    @game.update!(referee1_string: '0 Gast, Gustav',
+                  referee2_string: "#{@referee2.lizenznummer} Pfiff, Bo",
+                  officiating_referee_ids: [0, @referee2.id])
+    login(@coach_user)
+
+    get '/api/v2/referee/observations/games'
+    entry = JSON.parse(response.body).find { |g| g['game_id'] == @game.id }
+    assert_equal([[@referee2.id, 2]], entry['referees'].map { |r| [r['referee_id'], r['position']] })
+
+    post '/api/v2/referee/observations', params: payload, as: :json
+    assert_response :created
+    assert_equal 2, RefereeObservation.last.ratings.sole.position
+  end
+
+  # Abgleich Bericht gegen bewertete Personen: Lizenznummer und Name tragen je
+  # fuer sich. Fiele einer der beiden Wege weg, stuende ein bewerteter Schiri
+  # zusaetzlich im Hinweis.
+  test 'umbenannter Schiri wird ueber die Lizenznummer zugeordnet' do
+    @game.update!(referee1_string: "#{@referee1.lizenznummer} Schiri-Neu, Anna",
+                  referee2_string: "#{@referee2.lizenznummer} Pfiff, Bo")
+    login(@coach_user)
+
+    get '/api/v2/referee/observations/games'
+    entry = JSON.parse(response.body).find { |g| g['game_id'] == @game.id }
+    assert_empty entry['unrated_referee_names']
+  end
+
+  test 'Eintrag ohne passende Lizenznummer wird ueber den Namen zugeordnet' do
+    @game.update!(referee1_string: '0 schiri,  anna ',
+                  referee2_string: '999999 Pfiff, Bo')
+    login(@coach_user)
+
+    get '/api/v2/referee/observations/games'
+    entry = JSON.parse(response.body).find { |g| g['game_id'] == @game.id }
+    assert_empty entry['unrated_referee_names']
+  end
+
+  test 'Gast mit Datensatz und Freitext im Bericht steht nur einmal im Hinweis' do
+    guest = create(:referee, vorname: 'Kamil', nachname: 'Gast', guest: true, lizenznummer: nil)
+    @game.update!(referee2_string: '0 gast,  kamil', officiating_referee_ids: [@referee1.id, guest.id])
+    login(@coach_user)
+
+    get '/api/v2/referee/observations/games'
+    entry = JSON.parse(response.body).find { |g| g['game_id'] == @game.id }
+    assert_equal ['Kamil Gast'], entry['unrated_referee_names']
+  end
+
+  test 'Freitext ohne bekanntes Profil fuehrt zur eigenen Meldung, leeres Gespann zur alten' do
+    @game.update!(referee1_string: '0 Meier, Max', officiating_referee_ids: [])
+    login(@coach_user)
+
+    get '/api/v2/referee/observations/games'
+    entry = JSON.parse(response.body).find { |g| g['game_id'] == @game.id }
+    assert_empty entry['referees']
+    assert_equal ['Max Meier'], entry['unrated_referee_names']
+    post '/api/v2/referee/observations', params: payload, as: :json
+    assert_response :unprocessable_entity
+    assert_equal RefereeObservationSubmission::NO_RATEABLE_REFEREES_ERROR, JSON.parse(response.body)['error']
+
+    @game.update!(referee1_string: nil)
+    post '/api/v2/referee/observations', params: payload, as: :json
+    assert_response :unprocessable_entity
+    assert_equal RefereeObservationSubmission::NO_REFEREES_ERROR, JSON.parse(response.body)['error']
+  end
+
+  # Nennt der Bericht nur Gaeste, loest Game#feedback_referees niemanden auf und
+  # faellt auf die Ansetzung zurueck. Die angesetzten Schiris haben dann aber
+  # nicht gepfiffen und duerfen nicht bewertet werden.
+  test 'angesetzte Schiris ohne Eintrag im Bericht werden nicht bewertet' do
+    @game.update!(referee1_string: '0 Gast, Gustav', referee2_string: '0 Gast, Gerda',
+                  officiating_referee_ids: [0, 0],
+                  nominated_referee_ids: [@referee1.id, @referee2.id])
+    login(@coach_user)
+
+    get '/api/v2/referee/observations/games'
+    entry = JSON.parse(response.body).find { |g| g['game_id'] == @game.id }
+    assert_empty entry['referees']
+    assert_equal ['Gustav Gast', 'Gerda Gast'], entry['unrated_referee_names']
+
+    post '/api/v2/referee/observations', params: payload, as: :json
+    assert_response :unprocessable_entity
+    assert_equal RefereeObservationSubmission::NO_RATEABLE_REFEREES_ERROR, JSON.parse(response.body)['error']
+  end
+
+  test 'angesetzter Schiri, der im Bericht als Freitext steht, bleibt bewertbar auf seinem Slot' do
+    @game.update!(referee1_string: '0 Gast, Gustav', referee2_string: '0 Pfiff, Bo',
+                  officiating_referee_ids: [0, 0],
+                  nominated_referee_ids: [@referee1.id, @referee2.id])
+    login(@coach_user)
+
+    get '/api/v2/referee/observations/games'
+    entry = JSON.parse(response.body).find { |g| g['game_id'] == @game.id }
+    assert_equal([[@referee2.id, 2]], entry['referees'].map { |r| [r['referee_id'], r['position']] })
+    assert_equal ['Gustav Gast'], entry['unrated_referee_names']
+  end
+
+  # '0 , ' ist ein gesetzter und wieder geleerter Platz, kein Schiri.
+  test 'ohne Schiris im Bericht bleibt die Ansetzung massgeblich, auch bei geleerten Plaetzen' do
+    @game.update!(referee1_string: '0 , ', referee2_string: '0 , ',
+                  officiating_referee_ids: [], nominated_referee_ids: [@referee1.id, @referee2.id])
+    login(@coach_user)
+
+    get '/api/v2/referee/observations/games'
+    entry = JSON.parse(response.body).find { |g| g['game_id'] == @game.id }
+    assert_equal([@referee1.id, @referee2.id], entry['referees'].map { |r| r['referee_id'] })
+  end
+
   test 'Konto ohne Schiedsrichterprofil bekommt 403' do
     login(create(:user, :admin))
     get '/api/v2/referee/observations'
     assert_response :forbidden
   end
 
+  # Bearbeitung des eigenen Bogens (feedback#74)
+
+  test 'Coach bearbeitet den eigenen Bogen, der Bogen traegt den Vermerk' do
+    observation = submit_as_coach
+    assert_nil observation.edited_at
+
+    changed = payload
+    changed[:final_comments] = 'Korrigiert: Laufwege im Gespann abstimmen.'
+    changed[:pair_overall_rating] = 6
+    changed[:ratings][1][:overall_rating] = 4
+    patch "/api/v2/referee/observations/#{observation.id}", params: changed, as: :json
+    assert_response :success
+
+    observation.reload
+    assert_equal 'Korrigiert: Laufwege im Gespann abstimmen.', observation.final_comments
+    assert_equal 6, observation.pair_overall_rating
+    assert_equal 4, observation.ratings.find { |r| r.referee_id == @referee2.id }.overall_rating
+    assert_not_nil observation.edited_at
+    assert_equal observation.edited_at.iso8601, JSON.parse(response.body)['edited_at']
+    assert_equal 1, RefereeObservation.count
+  end
+
+  test 'beobachtete Person sieht den Vermerk' do
+    observation = submit_as_coach
+    changed = payload
+    changed[:other_matters] = 'Nachtrag zur Halle.'
+    patch "/api/v2/referee/observations/#{observation.id}", params: changed, as: :json
+    assert_response :success
+
+    login(referee_user(@referee1))
+    get '/api/v2/referee/observations/received'
+    entry = JSON.parse(response.body).first
+    assert_equal 'Nachtrag zur Halle.', entry['other_matters']
+    assert entry['edited_at'].present?
+  end
+
+  test 'Bearbeitung verschickt keine Mail an die beobachteten Schiedsrichter' do
+    referee_user(@referee1)
+    referee_user(@referee2)
+    observation = submit_as_coach
+
+    changed = payload
+    changed[:final_comments] = 'Anders formuliert.'
+    assert_no_difference 'ActionMailer::Base.deliveries.size' do
+      perform_enqueued_jobs do
+        patch "/api/v2/referee/observations/#{observation.id}", params: changed, as: :json
+      end
+    end
+    assert_response :success
+  end
+
+  test 'unveraendert gespeicherter Bogen bekommt keinen Vermerk' do
+    observation = submit_as_coach
+    patch "/api/v2/referee/observations/#{observation.id}", params: payload, as: :json
+    assert_response :success
+    assert_nil observation.reload.edited_at
+  end
+
+  test 'unvollstaendige Bearbeitung wird abgewiesen und laesst den Bogen unveraendert' do
+    observation = submit_as_coach
+    broken = payload
+    broken[:final_comments] = ''
+    broken[:match_description] = 'Neu'
+    patch "/api/v2/referee/observations/#{observation.id}", params: broken, as: :json
+    assert_response :unprocessable_entity
+
+    observation.reload
+    assert_equal 'Kopf-an-Kopf-Spiel.', observation.match_description
+    assert_nil observation.edited_at
+  end
+
+  test 'fehlende Noten einer bewerteten Person werden abgewiesen' do
+    observation = submit_as_coach
+    broken = payload
+    broken[:ratings] = broken[:ratings].first(1)
+    patch "/api/v2/referee/observations/#{observation.id}", params: broken, as: :json
+    assert_response :unprocessable_entity
+    assert_equal 3, observation.reload.ratings.find { |r| r.referee_id == @referee2.id }.overall_rating
+  end
+
+  test 'Bearbeitung fuegt keine neue bewertete Person hinzu' do
+    login(@coach_user)
+    single = payload
+    single[:ratings] = single[:ratings].first(1)
+    post '/api/v2/referee/observations', params: single, as: :json
+    assert_response :created
+    observation = RefereeObservation.last
+
+    patch "/api/v2/referee/observations/#{observation.id}", params: payload, as: :json
+    assert_response :success
+    assert_equal [@referee1.id], observation.reload.ratings.map(&:referee_id)
+  end
+
+  test 'Bearbeitung bleibt ohne Frist und nach Ablauf der Qualifikation moeglich' do
+    observation = submit_as_coach
+    observation.update_columns(submitted_at: 2.years.ago)
+    RefereeQualification.where(referee: @coach).update_all(valid_until: 1.day.ago.to_date)
+
+    changed = payload
+    changed[:final_comments] = 'Spaete Korrektur.'
+    patch "/api/v2/referee/observations/#{observation.id}", params: changed, as: :json
+    assert_response :success
+    assert_equal 'Spaete Korrektur.', observation.reload.final_comments
+  end
+
+  test 'nur der abgebende Coach darf bearbeiten' do
+    observation = submit_as_coach
+    other_coach = create(:referee)
+    RefereeQualification.create!(referee: other_coach, referee_qualification_type: @b_type,
+                                 valid_until: 1.year.from_now.to_date)
+    changed = payload
+    changed[:final_comments] = 'Fremd ueberschrieben.'
+
+    [referee_user(other_coach), referee_user(@referee1)].each do |user|
+      login(user)
+      patch "/api/v2/referee/observations/#{observation.id}", params: changed, as: :json
+      assert_response :forbidden
+    end
+    assert_equal 'Kommunikation im Gespann ausbauen.', observation.reload.final_comments
+  end
+
+  test 'unbekannter Bogen liefert 404' do
+    login(@coach_user)
+    patch '/api/v2/referee/observations/0', params: payload, as: :json
+    assert_response :not_found
+  end
+
   private
+
+  def submit_as_coach
+    login(@coach_user)
+    post '/api/v2/referee/observations', params: payload, as: :json
+    assert_response :created
+    RefereeObservation.find(JSON.parse(response.body)['id'])
+  end
 
   def payload
     {

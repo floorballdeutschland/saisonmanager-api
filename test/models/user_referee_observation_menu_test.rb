@@ -59,6 +59,30 @@ class UserRefereeObservationMenuTest < ActiveSupport::TestCase
     assert_not items[:menu_item_referee_profile]
   end
 
+  # Eigene Boegen korrigieren (feedback#74) geht ohne Frist, also auch nach
+  # Ablauf der Qualifikation. Der Schluessel fuer Liste und Bearbeiten darf
+  # deshalb nicht an der Qualifikation allein haengen.
+  test 'Coach mit abgelaufener Qualifikation behaelt den Zugang zu eigenen Boegen' do
+    referee = create(:referee)
+    RefereeQualification.create!(referee: referee, referee_qualification_type: @b_type,
+                                 valid_until: Date.current - 1)
+    user = referee_user(referee)
+    assert_not user.permissions_items[:menu_item_referee_observations_own]
+
+    create(:referee_observation, :with_rating, coach: referee)
+    items = user.permissions_items
+    assert_not items[:menu_item_referee_observations]
+    assert items[:menu_item_referee_observations_own]
+  end
+
+  test 'qualifizierter Coach ohne Boegen bekommt den Schluessel fuer eigene Boegen' do
+    assert referee_user(coach_referee).permissions_items[:menu_item_referee_observations_own]
+  end
+
+  test 'Konto ohne Schiedsrichterprofil bekommt keinen Zugang zu eigenen Boegen' do
+    assert_not create(:user, :admin).permissions_items[:menu_item_referee_observations_own]
+  end
+
   # Lesen und Zuruecknehmen sind zwei Rechte. Haengt der Knopf im Frontend am
   # Leserecht, sieht ihn auch die Ansetzung -- und laeuft beim Klick in eine 403
   # (RefereeObservationPolicy#can_moderate?).

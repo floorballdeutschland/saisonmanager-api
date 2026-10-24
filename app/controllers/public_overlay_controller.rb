@@ -22,6 +22,9 @@ class PublicOverlayController < ApplicationController
   # Token erzeugen kann. Ein echter Zustand liegt bei wenigen hundert Byte.
   MAX_STATE_BYTES = 16_384
 
+  # Wappen der Mannschaft und, als Rückfall, des Vereins vorab laden.
+  TEAM_LOGO_INCLUDES = [{ logo_attachment: :blob }, { club: { logo_attachment: :blob } }].freeze
+
   skip_before_action :authenticate_user
   before_action :load_link
 
@@ -52,9 +55,17 @@ class PublicOverlayController < ApplicationController
   #
   # Rahmendaten für das Dock: Welche Spiele gehören zum Spieltag, damit sich
   # zwischen ihnen umschalten lässt, ohne ein neues Token zu holen.
+  #
+  # Wappen und Ergebnis stehen seit feedback#77 mit drin: Die Thumbnail-Seite
+  # hinter dem Bedienfeld zeichnet daraus die YouTube-Bilder aller Spiele des
+  # Spieltags. Ohne sie bräuchte sie je Spiel einen `live`-Abruf, und die
+  # gehen auf denselben Drosseltopf (300/min je Adresse) wie die laufenden
+  # Browser-Quellen der Übertragung.
   def game_day
     gd = @link.game_day
-    games = gd.games.includes(:home_team, :guest_team).order(:start_time)
+    games = gd.games
+              .includes(home_team: TEAM_LOGO_INCLUDES, guest_team: TEAM_LOGO_INCLUDES)
+              .order(:start_time)
 
     render json: {
       game_day: {
@@ -74,7 +85,14 @@ class PublicOverlayController < ApplicationController
           guest_team: g.guest_team&.name,
           started: g.started,
           ended: g.ended,
-          game_status: g.game_status
+          game_status: g.game_status,
+          # Dieselben Rückfälle wie in Game#meta_hash: ohne Mannschaftswappen
+          # das des Vereins.
+          home_team_logo: g.home_team&.logo_url_fallback,
+          guest_team_logo: g.guest_team&.logo_url_fallback,
+          # Nur nach dem Schlusspfiff: Das Highlight-Bild trägt den Endstand,
+          # ein Zwischenstand gehört nicht hinein.
+          result: g.ended ? g.result&.slice(:home_goals, :guest_goals, :postfix) : nil
         }
       end,
       valid_from: @link.valid_from&.iso8601,

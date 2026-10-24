@@ -1,0 +1,9 @@
+Hallo <%= @first_name %>,
+
+deine Anmeldung zum Kurs „<%= @course.title %>“ ist eingegangen. Weil <%= @club&.name %> die Kursgebühr übernehmen soll, muss der Verein sie noch bestätigen. Danach bekommst du eine weitere Mail.
+
+Termine:
+<%= render 'sessions' %>
+<% if @cancel_link %>
+Abmelden: <%= @cancel_link %>
+<% end %>

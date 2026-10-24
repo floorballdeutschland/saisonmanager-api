@@ -1,0 +1,6 @@
+<p>Hallo <%= @first_name %>,</p>
+<p><%= @club&.name %> übernimmt die Kursgebühr für den Kurs <strong><%= @course.title %></strong> nicht, die Anmeldung ist damit nicht zustande gekommen.</p>
+<% if @reason.present? %>
+  <p>Begründung des Vereins: <%= @reason %></p>
+<% end %>
+<p>Wenn du trotzdem teilnehmen möchtest, wende dich bitte an die Kursverantwortlichen<% if @course.contact_email.present? %> (<a href="mailto:<%= @course.contact_email %>"><%= @course.contact_email %></a>, du kannst auch einfach auf diese Mail antworten)<% end %>.</p>

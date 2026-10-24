@@ -96,6 +96,65 @@ class YoutubeLiveApiTest < ActiveSupport::TestCase
     assert_empty gesendet
   end
 
+  # --- Sprungmarken in der Beschreibung (api#815) ----------------------------
+
+  test 'Videodaten: Start aus liveStreamingDetails, Laenge aus contentDetails' do
+    items = [
+      { 'id' => 'bc-1',
+        'liveStreamingDetails' => { 'actualStartTime' => '2026-10-11T15:50:00Z',
+                                    'actualEndTime' => '2026-10-11T19:00:00Z' },
+        'contentDetails' => { 'duration' => 'PT2H3M4S' } },
+      { 'id' => 'bc-2', 'contentDetails' => { 'duration' => 'P0D' } }
+    ]
+    api = api_mit({ 'items' => items }, [])
+
+    details = api.videos(%w[bc-1 bc-2])
+
+    assert_equal Time.utc(2026, 10, 11, 15, 50), details['bc-1'][:actual_start_at]
+    assert_equal 7384, details['bc-1'][:duration_seconds], 'nicht actualEndTime'
+    assert_nil details['bc-2'][:duration_seconds], 'P0D heisst: noch in Verarbeitung'
+  end
+
+  # Dieselbe Falle wie bei publish!: `videos.update` ersetzt den snippet.
+  test 'Beschreibung: schickt Titel, Kategorie und Schlagwoerter mit, nur die Beschreibung ist neu' do
+    gesendet = []
+    api = api_mit({ 'items' => [{ 'id' => 'bc-1',
+                                  'snippet' => { 'title' => 'Heim vs Gast', 'categoryId' => '17',
+                                                 'description' => 'alt', 'tags' => ['Floorball'],
+                                                 'channelId' => 'UCxyz', 'publishedAt' => '2026-10-11' } }] },
+                  gesendet)
+
+    assert_equal :geschrieben, api.update_description!('bc-1') { |alt| "#{alt}\nneu" }
+    pfad, koerper, params = gesendet.first
+    assert_equal 'videos', pfad
+    assert_equal 'snippet', params[:part]
+    assert_equal({ 'title' => 'Heim vs Gast', 'categoryId' => '17', 'description' => "alt\nneu",
+                   'tags' => ['Floorball'] }, koerper[:snippet])
+  end
+
+  test 'Beschreibung: unveraendert wird nicht geschrieben' do
+    gesendet = []
+    api = api_mit({ 'items' => [{ 'id' => 'bc-1', 'snippet' => { 'title' => 'T', 'categoryId' => '17',
+                                                                   'description' => 'gleich' } }] }, gesendet)
+
+    assert_equal :unveraendert, api.update_description!('bc-1') { |alt| alt }
+    assert_empty gesendet
+  end
+
+  test 'Beschreibung: ohne Titel oder Kategorie wird nicht geschrieben' do
+    gesendet = []
+    api = api_mit({ 'items' => [{ 'id' => 'bc-1', 'snippet' => { 'description' => 'x' } }] }, gesendet)
+
+    assert_raises(YoutubeLiveApi::Error) { api.update_description!('bc-1') { |alt| "#{alt}!" } }
+    assert_empty gesendet
+  end
+
+  test 'Beschreibung: geloeschtes Video ist verschwunden' do
+    api = api_mit({ 'items' => [] }, [])
+
+    assert_equal :verschwunden, api.update_description!('bc-1') { |alt| alt }
+  end
+
   # Der ueber die Oberflaeche verbundene Zugang schlaegt die Umgebung. Sonst
   # bliebe ein abgelaufener Token in der `.env` fuer immer der massgebliche, und
   # jedes Neuverbinden waere wirkungslos, ohne dass es jemand sieht.

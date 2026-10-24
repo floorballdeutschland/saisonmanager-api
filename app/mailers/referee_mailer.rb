@@ -4,6 +4,20 @@ class RefereeMailer < ApplicationMailer
   # für Stammdaten, wenn kein Landesverband zu ermitteln ist.
   RSK_REPLY_TO = 'rsk@floorball.de'
 
+  # Gründe und Empfänger des Berichtsformulars (api#789), siehe
+  # Game#report_form_reasons und Game#report_form_recipient.
+  REPORT_REASON_LABELS = {
+    match_penalty: 'eine Matchstrafe',
+    technical_match_penalty: 'eine technische Matchstrafe',
+    special_event: 'ein besonderes Ereignis'
+  }.freeze
+
+  REPORT_RECIPIENT_LABELS = {
+    'vsk' => 'die zuständige VSK',
+    'sbk' => 'die zuständige SBK',
+    'vsk_and_sbk' => 'die zuständige VSK und die zuständige SBK'
+  }.freeze
+
   # `first_license`: Der Schiedsrichter trug vorher keine Lizenzstufe – meist eine
   # Neuanlage aus dem Kursimport. Die Vorlage meldet dann eine erteilte statt
   # einer aktualisierten Lizenz und behauptet nicht, die Lizenz sei „ab sofort
@@ -21,6 +35,32 @@ class RefereeMailer < ApplicationMailer
       placeholders: {
         referee_name: "#{referee.vorname} #{referee.nachname}",
         first_name: referee.vorname
+      }
+    )
+  end
+
+  # Zwei Profile derselben Person wurden zusammengelegt, und die Person fuehrt
+  # ab jetzt die kleinere Nummer des Masters (Referee.merge_roles). Mit Konto
+  # nennt die Mail auch den neuen Login, denn der heisst sr-<Nummer>.
+  # `own_account`: Das Konto ist das, mit dem die Person sich bisher angemeldet
+  # hat (Passwort bleibt). false heisst, der Master brachte ein eigenes Konto
+  # mit; dessen Passwort kennt die Person womoeglich nicht.
+  def number_change(referee, previous_number:, user_name: nil, own_account: true)
+    @referee = referee
+    @previous_number = previous_number
+    @user_name = user_name
+    @own_account = own_account
+
+    templated_mail(
+      to: referee.email,
+      subject: "Deine Schiedsrichternummer hat sich geändert – #{referee.vorname} #{referee.nachname}",
+      default_reply_to: 'rsk@floorball.de',
+      placeholders: {
+        referee_name: "#{referee.vorname} #{referee.nachname}",
+        first_name: referee.vorname,
+        previous_number: previous_number.to_s,
+        new_number: referee.lizenznummer.to_s,
+        user_name: user_name.to_s
       }
     )
   end
@@ -251,6 +291,8 @@ class RefereeMailer < ApplicationMailer
     @game = game
     @deadline = deadline
     @upload_url = game.url
+    @reasons_text = report_reasons_text(game.report_form_reasons)
+    @recipient_text = report_recipient_text(game.report_form_recipient)
 
     templated_mail(
       # `compact_blank` statt `compact`: Eine leere Adresse ist kein Empfänger,
@@ -262,7 +304,9 @@ class RefereeMailer < ApplicationMailer
         first_name: "#{referee1.vorname} und #{referee2.vorname}",
         game_number: game.game_number,
         upload_url: @upload_url,
-        deadline: deadline.strftime('%d.%m.%Y %H:%M')
+        deadline: deadline.strftime('%d.%m.%Y %H:%M'),
+        report_reasons: @reasons_text,
+        report_recipient: @recipient_text
       }
     )
   end
@@ -296,13 +340,7 @@ class RefereeMailer < ApplicationMailer
     @checklist_all_ok = checklist_answers.all? { |a| a['answer'] == true }
     @checklist_failed_items = checklist_answers.select { |a| a['answer'] == false }
 
-    if report.file.attached?
-      blob = report.file.blob
-      attachments[blob.filename.to_s] = {
-        mime_type: blob.content_type,
-        content: blob.download
-      }
-    end
+    attach_report(report)
 
     templated_mail(
       to: vsk_email,
@@ -312,12 +350,56 @@ class RefereeMailer < ApplicationMailer
     )
   end
 
+  # Berichtsformular an die SBK (api#789). Zwei Fälle:
+  #
+  # * zur Kenntnis: technische Matchstrafe oder besonderes Ereignis. Beides
+  #   zieht kein VSK-Verfahren nach sich, die VSK bekommt den Bericht nicht.
+  # * `proceeding: 'pending'`: volle Matchstrafe im manuellen Modus des
+  #   Landesverbands, der Verfahrensvorschlag ist offen. Die SBK muss das
+  #   Verfahren vor der VSK selbst einleiten; die Mail verlinkt deshalb die
+  #   Verfahrensvorschläge, über die der Bericht erst mit der Eröffnung an die
+  #   VSK geht.
+  # * `proceeding: 'opened'`: das Verfahren ist schon eröffnet, ein neuer
+  #   Bericht ging direkt an die VSK. Die SBK bekommt ihn zur Kenntnis.
+  #
+  # `reasons` nennt die Gründe, die DIESE Mail betreffen. Im automatischen
+  # Mischfall geht die Matchstrafe getrennt an die VSK und fehlt hier.
+  def referee_report_to_sbk(sbk_email, uploader, game, report, reasons:,
+                            proceeding: nil, game_url: nil, checklist_answers: [])
+    assignment = game.referee_assignment
+
+    @uploader = uploader
+    @game = game
+    @referee1 = assignment&.referee1
+    @referee2 = assignment&.referee2
+    @game_url = game_url
+    @reasons_text = report_reasons_text(reasons)
+    @proceeding = proceeding.to_s
+    @proceedings_url = "#{FrontendUrl.base}/verwaltung/verfahrensvorschlaege"
+    @checklist_answers = checklist_answers
+    @checklist_all_ok = checklist_answers.all? { |a| a['answer'] == true }
+    @checklist_failed_items = checklist_answers.select { |a| a['answer'] == false }
+
+    attach_report(report)
+
+    templated_mail(
+      to: sbk_email,
+      subject: "Berichtsformular eingereicht – Spielnummer #{game.game_number}",
+      default_reply_to: REPLY_TO,
+      placeholders: {
+        game_number: game.game_number,
+        report_reasons: @reasons_text,
+        proceedings_url: @proceeding == 'pending' ? @proceedings_url : ''
+      }
+    )
+  end
+
   # Neuer Antrag eines Schiris auf einen Vereins-Ausschluss. Empfänger ist
-  # ausnahmslos das zentrale Ansetzungs-Postfach von Floorball Deutschland.
+  # ausnahmslos das RSK-Postfach von Floorball Deutschland.
   #
   # Bewusst NICHT an das rsk_email des Landesverbands: Entschieden werden die
-  # Anträge von der Ansetzer-Rolle (menu_item_referee_exclusions), und die liegt
-  # bundesweit bei der RSK von Floorball Deutschland. Ein Landesverband bekam die
+  # Anträge bundesweit von der RSK von Floorball Deutschland
+  # (menu_item_referee_exclusions). Ein Landesverband bekam die
   # Mail zwar, fand den Antrag aber in keiner Maske wieder, konnte ihn also weder
   # bestätigen noch ablehnen.
   def club_exclusion_requested(exclusion_request)
@@ -326,9 +408,9 @@ class RefereeMailer < ApplicationMailer
     @club = exclusion_request.club
 
     templated_mail(
-      to: REPLY_TO,
+      to: RSK_REPLY_TO,
       subject: "Antrag Vereins-Ausschluss – #{@referee.vorname} #{@referee.nachname}",
-      default_reply_to: @referee.email.presence || REPLY_TO,
+      default_reply_to: @referee.email.presence || RSK_REPLY_TO,
       placeholders: {
         referee_name: "#{@referee.vorname} #{@referee.nachname}",
         club_name: @club&.name.to_s,
@@ -337,7 +419,7 @@ class RefereeMailer < ApplicationMailer
     )
   end
 
-  # Entscheidung der Ansetzung über einen Antrag – geht an den Schiri.
+  # Entscheidung der RSK über einen Antrag, geht an den Schiri.
   def club_exclusion_decision(exclusion_request)
     @exclusion_request = exclusion_request
     @referee = exclusion_request.referee
@@ -349,7 +431,7 @@ class RefereeMailer < ApplicationMailer
       subject: "Vereins-Ausschluss #{@approved ? 'genehmigt' : 'abgelehnt'} – #{@club&.name}",
       # Wie beim Antrag selbst: Eine Rückfrage zur Entscheidung gehört zu der
       # Stelle, die entschieden hat, und nicht zum Landesverband.
-      default_reply_to: REPLY_TO,
+      default_reply_to: RSK_REPLY_TO,
       placeholders: {
         referee_name: "#{@referee.vorname} #{@referee.nachname}",
         first_name: @referee.vorname,
@@ -463,6 +545,27 @@ class RefereeMailer < ApplicationMailer
     time = game.start_time.presence
     label = [entry[:date].strftime('%d.%m.%Y'), time].compact.join(' ')
     "#{label} #{game.home_team&.name} vs. #{game.guest_team&.name}: #{entry[:url]}"
+  end
+
+  def attach_report(report)
+    return unless report.file.attached?
+
+    blob = report.file.blob
+    attachments[blob.filename.to_s] = {
+      mime_type: blob.content_type,
+      content: blob.download
+    }
+  end
+
+  # „eine Matchstrafe und ein besonderes Ereignis"
+  def report_reasons_text(reasons)
+    reasons.filter_map { |r| REPORT_REASON_LABELS[r] }
+           .to_sentence(words_connector: ', ', two_words_connector: ' und ', last_word_connector: ' und ')
+  end
+
+  # Leer, wenn nichts weitergeleitet wird; die Vorlage lässt den Satz dann weg.
+  def report_recipient_text(recipient)
+    REPORT_RECIPIENT_LABELS.fetch(recipient.to_s, '')
   end
 
   # SBK-Adresse des Spielbetriebs (Landesverband des game_operation, aufgelöst

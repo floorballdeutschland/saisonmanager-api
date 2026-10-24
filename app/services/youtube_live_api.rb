@@ -43,6 +43,9 @@ class YoutubeLiveApi
   class TransportError < Error; end
   class QuotaExceeded < Error; end
   class AuthError < Error; end
+  # Sonstige 4xx-Antwort (ungültige Beschreibung, fehlendes Video, falsche
+  # Parameter): Ein zweiter Versuch mit derselben Anfrage scheitert genauso.
+  class ClientError < Error; end
 
   API_ROOT = 'https://www.googleapis.com/youtube/v3'
   TOKEN_URL = 'https://oauth2.googleapis.com/token'
@@ -207,7 +210,74 @@ class YoutubeLiveApi
     :veroeffentlicht
   end
 
+  # Was `videos.update` im snippet annimmt. Die übrigen Felder (publishedAt,
+  # channelId, thumbnails, …) sind nur lesbar.
+  WRITABLE_SNIPPET_FIELDS = %w[title description categoryId tags defaultLanguage defaultAudioLanguage].freeze
+
+  # Start und Länge der Aufzeichnungen, als Hash über die Video-ID (gleich der
+  # Broadcast-ID). Eine Einheit je 50 Videos.
+  #
+  # Die Länge ist `contentDetails.duration` der Aufzeichnung und NICHT
+  # `liveStreamingDetails.actualEndTime`: Das Ende der Übertragung liegt durch
+  # die 15-Minuten-Regel des Wächters weit hinter dem Ende des Bildes. Solange
+  # YouTube die Aufzeichnung noch verarbeitet, meldet es `P0D`; das kommt hier
+  # als nil heraus.
+  def videos(ids)
+    ergebnis = {}
+    Array(ids).compact.uniq.each_slice(50) do |block|
+      antwort = get('videos', part: 'id,liveStreamingDetails,contentDetails', id: block.join(','))
+      antwort.fetch('items', []).each do |item|
+        start = item.dig('liveStreamingDetails', 'actualStartTime')
+        ergebnis[item['id']] = {
+          actual_start_at: start.present? ? Time.zone.parse(start) : nil,
+          duration_seconds: dauer_in_sekunden(item.dig('contentDetails', 'duration'))
+        }
+      end
+    end
+    ergebnis
+  end
+
+  # Ändert die Beschreibung eines Videos. Der Block bekommt die vorhandene
+  # Beschreibung und liefert die neue. Antwortet mit :geschrieben,
+  # :unveraendert oder :verschwunden.
+  #
+  # DIESELBE FALLE WIE BEI #publish!: `videos.update` ERSETZT den ganzen
+  # `snippet`. Titel und `categoryId` sind Pflicht, und was fehlt (Schlagwörter,
+  # Sprache), ist danach gelöscht. Deshalb wird der snippet frisch gelesen und
+  # mit allen schreibbaren Feldern zurückgeschickt, nur die Beschreibung ist
+  # neu. Frisch und nicht aus einem früheren Lauf: Von Hand ergänzter Text soll
+  # erhalten bleiben.
+  def update_description!(video_id)
+    antwort = get('videos', part: 'id,snippet', id: video_id)
+    eintrag = antwort.fetch('items', []).first
+    return :verschwunden if eintrag.nil?
+
+    snippet = eintrag['snippet']
+    if snippet.blank? || snippet['title'].blank? || snippet['categoryId'].blank?
+      raise Error, "videos liefert keinen vollständigen snippet zu #{video_id}"
+    end
+
+    alt = snippet['description'].to_s
+    neu = yield(alt)
+    return :unveraendert if neu == alt
+
+    put_json('videos',
+             { id: video_id, snippet: snippet.slice(*WRITABLE_SNIPPET_FIELDS).merge('description' => neu) },
+             part: 'snippet')
+    :geschrieben
+  end
+
   private
+
+  # "PT1H2M3S" -> 3723. "P0D", leer oder unlesbar -> nil.
+  def dauer_in_sekunden(iso)
+    return nil if iso.blank?
+
+    sekunden = ActiveSupport::Duration.parse(iso).to_i
+    sekunden.positive? ? sekunden : nil
+  rescue ActiveSupport::Duration::ISO8601Parser::ParsingError
+    nil
+  end
 
   def broadcasts(status)
     ergebnis = []
@@ -294,6 +364,7 @@ class YoutubeLiveApi
     koerper = antwort.body.to_s
     return QuotaExceeded if koerper.include?('quotaExceeded') || koerper.include?('rateLimitExceeded')
     return AuthError if koerper.match?(/invalid_grant|insufficientPermissions|forbidden|authError/)
+    return ClientError if antwort.code.to_i.between?(400, 499)
 
     Error
   end

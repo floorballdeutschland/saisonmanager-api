@@ -208,8 +208,12 @@ module Admin
       return render json: { message: 'Secondary-Schiedsrichter nicht gefunden.' }, status: :not_found unless secondary
       return forbidden_response unless can_access_referee?(secondary, include_vm: false)
 
-      secondary.merge_into!(@referee, current_user.id)
-      render json: { message: 'Schiedsrichter erfolgreich zusammengeführt.', master_id: @referee.id }
+      # Die Maske waehlt nur das Paar. Wer Master wird, entscheidet die kleinste
+      # Nummer (Referee.merge_roles), deshalb meldet die Antwort den Master zurueck.
+      master, secondary = Referee.merge_roles(@referee, secondary)
+      secondary.merge_into!(master, current_user.id)
+      render json: { message: 'Schiedsrichter erfolgreich zusammengeführt.', master_id: master.id,
+                     master_lizenznummer_display: master.reload.lizenznummer_display }
     rescue ArgumentError => e
       render json: { message: e.message }, status: :unprocessable_entity
     end
@@ -238,7 +242,8 @@ module Admin
       return forbidden_response unless can_access_referee?(@referee, include_vm: false)
 
       results = RefereeCourseResult
-                .awaiting_lv_review
+                .in_history
+                .includes(:referee_course)
                 .where(referee_id: @referee.id)
                 .order(kursstichtag: :desc, created_at: :desc)
 

@@ -28,6 +28,12 @@ class Game < ApplicationRecord
   # Re-Import löscht Spieltage samt Spielen) Einladungen mit gültigem Token und
   # personenbezogener Adresse zurück, deren Aufruf am fehlenden Spiel scheitert.
   has_many :referee_feedback_invitations, dependent: :destroy
+  # Tabletmodus (api#816). Der Fremdschlüssel löscht ohnehin mit, das hier
+  # deckt den Weg über `destroy` ohne Einzelabfragen ab.
+  has_many :game_shots, dependent: :delete_all
+  # Links zum Kalibrieren (fe#560): gehen mit dem Spiel, sonst blockiert der
+  # Fremdschlüssel das Löschen.
+  has_many :tablet_highlight_requests, dependent: :delete_all
 
   # Spiele eines Schiris. Kanonisch über die stabile Referee-PK in
   # officiating_referee_ids (Fundament #45); referee_ids (Lizenznummer) bleibt als
@@ -109,6 +115,18 @@ class Game < ApplicationRecord
   # Gespann bestimmt, nie für Mannschaften oder die Öffentlichkeit.
   REFEREE_NOTES_ATTRIBUTES = %w[referee_notes referee_notes_updated_at referee_notes_updated_by].freeze
 
+  # Prüfwert des Einspruchslinks an den Ausrichter. Er ist nur ein Hash, aber
+  # mit ihm allein ließe sich ein erratener oder anderswo mitgelesener Token
+  # gegenprüfen, und niemand außerhalb von GamesController#valid_veto_token?
+  # braucht ihn.
+  SECRET_ATTRIBUTES = %w[checklist_veto_token_digest].freeze
+
+  # Erledigt-Vermerk der SBK (Admin::GameReportReviewsController): ein
+  # Arbeitsvermerk der Spielleitung, nicht Teil des Spielberichts. Der
+  # Kommentar kann Einschätzungen zum Ausrichter enthalten und geht nur über
+  # die Arbeitsansicht „Spielberichte" an Admin und SBK.
+  REPORT_REVIEW_ATTRIBUTES = %w[report_reviewed_at report_reviewed_by_user_id report_review_comment].freeze
+
   # Ein festgesetztes Forfait-Ergebnis wird immer als Paar gefuehrt: nur eine
   # Seite gesetzt hiesse, die andere aus der Liga-Vorgabe zu ergaenzen -- ein
   # Mischergebnis, das niemand so beschlossen hat.
@@ -121,6 +139,46 @@ class Game < ApplicationRecord
     %w[match_record_closed finalized].include? game_status
   end
 
+  # Unterschriften auf dem Spielberichtsbogen, die im Bericht abgehakt sein
+  # müssen, mit der Bezeichnung aus der Berichtsmaske. Die Reihenfolge ist die
+  # der Maske, damit die Absage die Haken in derselben Folge nennt.
+  REQUIRED_SIGNATURES = {
+    'time_keeper_signed' => 'Zeitnehmer/in',
+    'record_keeper_signed' => 'Schriftführer/in',
+    'home_captain_signed' => 'Heim',
+    'guest_captain_signed' => 'Gast',
+    'referee1_signed' => 'Schiedsrichter 1',
+    'referee2_signed' => 'Schiedsrichter 2'
+  }.freeze
+
+  # Die fehlenden Unterschriften als Spaltennamen, leer wenn nichts fehlt.
+  # Eine Regel für beide Stellen: die Sperre beim Abschließen des Berichts
+  # (GamesController#set_game_status) und den Hinweis „Unterschriften fehlen"
+  # in der Arbeitsansicht der SBK (Admin::GameDaysController#flags).
+  #
+  # Schiedsrichter 2 nur, wenn er eingetragen ist: Leitet eine Person das Spiel
+  # allein, gibt es die zweite Unterschrift nicht, und der Bericht ließe sich
+  # sonst nie abschließen. Ein Forfait-Spiel wurde nicht gespielt, auf seinem
+  # Bogen unterschreibt niemand.
+  def missing_signatures
+    return [] if forfait?
+
+    REQUIRED_SIGNATURES.keys.reject do |field|
+      (field == 'referee2_signed' && !referee2_present?) || self[field]
+    end
+  end
+
+  def missing_signature_labels
+    missing_signatures.map { |field| REQUIRED_SIGNATURES[field] }
+  end
+
+  # Im Tabletmodus erfasst? Davon hängt ab, ob die öffentliche Spielseite die
+  # ausführliche Statistik und die Highlights zeigt, nicht von einer
+  # Einstellung (fe#344).
+  def tablet_capture?
+    tablet_capture_at.present?
+  end
+
   # Wurde fuer dieses Spiel ein Forfait-Ergebnis von Hand festgesetzt?
   def forfait_goals_set?
     forfait? && forfait_home_goals.present? && forfait_guest_goals.present?
@@ -131,10 +189,15 @@ class Game < ApplicationRecord
   # Spielleitung des Heimvereins bedient. Deshalb fliegt sie hier grundsätzlich
   # aus as_json/to_json; wer sie ausliefern darf, liest sie explizit über
   # #referee_notes (siehe Admin::RefereeAssignmentsController,
-  # RefereeGameDayConfirmationsController).
+  # RefereeGameDayConfirmationsController). Für den Erledigt-Vermerk der SBK
+  # gilt dasselbe, ihn liefert nur Admin::GameDaysController#report_overview.
+  # Ebenso für SECRET_ATTRIBUTES.
   def serializable_hash(options = nil)
     options = (options || {}).dup
-    options[:except] = Array(options[:except]) + REFEREE_NOTES_ATTRIBUTES unless options[:only]
+    unless options[:only]
+      options[:except] = Array(options[:except]) + REFEREE_NOTES_ATTRIBUTES + REPORT_REVIEW_ATTRIBUTES +
+                         SECRET_ATTRIBUTES
+    end
     super(options)
   end
 
@@ -396,6 +459,70 @@ class Game < ApplicationRecord
     return event['penalty_name'] if event['penalty_name'].present?
 
     Setting.current.penalties.dig(event['penalty_id'].to_s, 'name')
+  end
+
+  # Erkannt wird über das Mapping, nicht über die id: Bis api#789 hing der
+  # Berichtsworkflow an `penalty_id == '5'`, und das ist auf Prod die
+  # TECHNISCHE Matchstrafe. Die volle Matchstrafe (id 6) löste weder die
+  # Erinnerung noch den Upload aus.
+  MATCH_PENALTY_MAPPING = 'penalty_ms_full'.freeze
+  TECHNICAL_MATCH_PENALTY_MAPPING = 'penalty_ms_tech'.freeze
+
+  def match_penalty?
+    penalty_event_mappings.include?(MATCH_PENALTY_MAPPING)
+  end
+
+  def technical_match_penalty?
+    penalty_event_mappings.include?(TECHNICAL_MATCH_PENALTY_MAPPING)
+  end
+
+  # Verlangt das Spiel ein Berichtsformular der Schiris? Unabhängig vom
+  # Schalter des Landesverbands; der entscheidet erst über Erinnerung und
+  # Versand (#report_form_recipient).
+  def report_form_required?
+    match_penalty? || technical_match_penalty? || special_event? || false
+  end
+
+  # Gründe, aus denen ein Berichtsformular verlangt ist, in fester Reihenfolge.
+  def report_form_reasons
+    reasons = []
+    reasons << :match_penalty if match_penalty?
+    reasons << :technical_match_penalty if technical_match_penalty?
+    reasons << :special_event if special_event?
+    reasons
+  end
+
+  # Wohin das hochgeladene Berichtsformular geht:
+  #
+  #   'vsk'          volle Matchstrafe (VSK-Verfahren)
+  #   'sbk'          technische Matchstrafe oder besonderes Ereignis, zur Kenntnis
+  #   'vsk_and_sbk'  beides, je eine eigene Mail
+  #
+  # Im manuellen Modus geht alles an die SBK: Sie leitet ein VSK-Verfahren
+  # selbst über den Verfahrensvorschlag ein. nil, wenn kein Bericht verlangt ist
+  # oder der Landesverband den digitalen Berichtsworkflow aus hat.
+  def report_form_recipient
+    return nil unless report_form_workflow_enabled? && report_form_required?
+    return 'sbk' if state_association.effective_manual_proceeding_creation
+
+    sbk_case = technical_match_penalty? || special_event?
+    return 'vsk_and_sbk' if match_penalty? && sbk_case
+
+    match_penalty? ? 'vsk' : 'sbk'
+  end
+
+  # Mappings aller Strafen des Spiels. Wie #penalty_mapping zuerst das
+  # eingefrorene Label, sonst der Katalog; der aber nur einmal gelesen, nicht
+  # je Ereignis.
+  def penalty_event_mappings
+    catalog = nil
+    Array(events).filter_map do |event|
+      next unless event.is_a?(Hash) && event['penalty_id'].present?
+      next event['penalty_mapping'].to_s if event['penalty_mapping'].present?
+
+      catalog ||= Setting.current&.penalties || {}
+      catalog.dig(event['penalty_id'].to_s, 'mapping')
+    end
   end
 
   # Bevorzugt eingefrorene Label; sonst Live-Auflösung aus Setting. Alt-Codes
@@ -959,6 +1086,19 @@ class Game < ApplicationRecord
     item
   end
 
+  # Der Aufstellungseintrag zu einer Trikotnummer, in öffentlicher Anzeigeform
+  # (DSGVO, siehe PublicPlayerNames). Für Ausgaben außerhalb der Spielseite,
+  # die Namen zu Ereignissen nennen: Sprungmarken in der YouTube-Beschreibung,
+  # Highlights, Schussstatistik. Die Pseudo-Nummern 1000 (Eigentor) und 2000
+  # (nicht angegeben) haben keinen Eintrag.
+  def public_lineup_entry(side, number)
+    return nil if number.blank? || [1000, 2000].include?(number.to_i)
+    return nil unless players.is_a?(Hash)
+
+    entry = Array(players[side.to_s]).find { |p| p['trikot_number'].to_i == number.to_i }
+    entry && PublicPlayerNames.mask_lineup_entry(entry)
+  end
+
   # player_id => { first_name:, last_name: } aus dem Spielbericht-Snapshot
   # (players-JSONB). Damit ist die Scorerliste self-contained für Altsaisons –
   # ein nachträglich umbenannter oder gelöschter Spieler verfälscht sie nicht.
@@ -1084,6 +1224,10 @@ class Game < ApplicationRecord
       guest_team_small_logo: guest_team&.logo_small_url_fallback,
       live_stream_link:,
       vod_link:,
+      # Tabletmodus (api#816): ob Schüsse erfasst wurden, und ob sie beim
+      # Abschluss als vollständig gemeldet wurden (nil: nicht gefragt).
+      tablet_capture: tablet_capture?,
+      tablet_shots_complete:,
       events: formatted_events,
       players: players_with_position,
       starting_players: starting_players_with_numbers,
@@ -1107,6 +1251,9 @@ class Game < ApplicationRecord
       # Gehoert an das Spiel und nicht an die Mannschaft: Entschieden wird es
       # vom Verband der Liga, in der gespielt wird.
       requested_license_playable: requested_license_playable?,
+      # Obergrenze je Mannschaft fuer den Zaehler der Kadermaske, `nil` bei
+      # Ligen ohne Feldgroesse (siehe LeagueCompetition#max_lineup_players).
+      max_lineup_players: league.max_lineup_players,
       period_titles: league.period_titles,
       current_period_title:,
       arena: game_day.arena_id,
@@ -1191,6 +1338,11 @@ class Game < ApplicationRecord
 
       home_captain_signed:,
       guest_captain_signed:,
+      # Die Haken, die vor dem Abschluss noch fehlen. Die Berichtsmaske markiert
+      # damit genau die Felder, an denen GamesController#set_game_status den
+      # Abschluss ablehnt, statt die Regel (Schiedsrichter 2, Forfait) selbst
+      # nachzubauen.
+      missing_signatures:,
 
       protest:,
       special_event:,
@@ -1584,8 +1736,25 @@ class Game < ApplicationRecord
   # `to_i` räumt zugleich einen Ordnungsfehler weg: Als Zeichenkette sortierte
   # '10' vor '9'. Bei `row` ist es zusätzlich nil-sicher (eine frisch angehängte
   # Zeile hat noch keine).
+  def self.event_sort_key(event)
+    [event['period'].to_i, event['time'].to_s.rjust(5, '0'), event['id'].to_i, event['row'].to_i]
+  end
+
+  # Spielstand nach jedem Tor, wie sort_events! ihn rechnen würde, ohne die
+  # Ereignisse anzufassen: { id => [heim, gast] }.
+  def goal_score_history
+    home_score = 0
+    guest_score = 0
+    (events || []).sort_by { |e| Game.event_sort_key(e) }.each_with_object({}) do |e, history|
+      next unless e['event_type'] == 'goal'
+
+      e['event_team'] == 'home' ? home_score += 1 : guest_score += 1
+      history[e['id'].to_i] = [home_score, guest_score]
+    end
+  end
+
   def sort_events!
-    events.sort_by! { |e| [e['period'].to_i, e['time'].to_s.rjust(5, '0'), e['id'].to_i, e['row'].to_i] }
+    events.sort_by! { |e| Game.event_sort_key(e) }
     home_score = 0
     guest_score = 0
 

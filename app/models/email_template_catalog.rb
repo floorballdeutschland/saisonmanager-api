@@ -109,6 +109,163 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'link', description: 'Link zum (erstmaligen) Setzen des Passworts' }
       ]
     },
+    'UserMailer#course_lead_invited' => {
+      mailer_class: 'UserMailer',
+      action_name: 'course_lead_invited',
+      description: 'Einladung einer neuen Kursleitung für einen Schiedsrichterkurs (Benutzername + Link zum Passwort-Setzen).',
+      default_subject: 'Kursleitung im Saisonmanager: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
+        { key: 'username', description: 'Benutzername des Kontos' },
+        { key: 'link', description: 'Link zum (erstmaligen) Setzen des Passworts' },
+        { key: 'course_title', description: 'Titel des Kurses' }
+      ]
+    },
+    'RefereeCourseMailer#registered' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'registered',
+      description: 'Bestätigung einer Kursanmeldung oder Platz auf der Warteliste.',
+      default_subject: 'Anmeldung bestätigt: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
+      ]
+    },
+    'RefereeCourseMailer#promoted' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'promoted',
+      description: 'Nachgerückt: Ein Platz ist frei geworden, die Anmeldung von der Warteliste gilt jetzt.',
+      default_subject: 'Platz frei geworden: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
+      ]
+    },
+    'RefereeCourseMailer#cancelled' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'cancelled',
+      description: 'Bestätigung einer Abmeldung vom Kurs.',
+      default_subject: 'Abmeldung bestätigt: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
+      ]
+    },
+    'RefereeCourseMailer#course_cancelled' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'course_cancelled',
+      description: 'Der Kurs wurde abgesagt (an alle aktiven Anmeldungen).',
+      default_subject: 'Kurs abgesagt: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
+      ]
+    },
+    'RefereeCourseMailer#awaiting_club' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'awaiting_club',
+      description: 'An die angemeldete Person: Anmeldung eingegangen, der zahlende Verein muss noch bestätigen.',
+      default_subject: 'Anmeldung eingegangen: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'club', description: 'Name des zahlenden Vereins' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
+      ]
+    },
+    'RefereeCourseMailer#club_confirmation_request' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'club_confirmation_request',
+      description: 'An den zahlenden Verein: Selbstanmeldung zu einem Schiedsrichterkurs bestätigen (Verbandseinstellung).',
+      default_subject: 'Kursanmeldung bestätigen: {{name}}, {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine' },
+        { key: 'club', description: 'Name des Vereins' },
+        { key: 'fee', description: 'Kursgebühr für den Verein' },
+        { key: 'link', description: 'Link zur Vereinsansicht der Kurse' }
+      ]
+    },
+    'RefereeCourseMailer#club_declined' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'club_declined',
+      description: 'An die angemeldete Person: Der Verein übernimmt die Kursgebühr nicht.',
+      default_subject: 'Anmeldung nicht bestätigt: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'club', description: 'Name des Vereins' },
+        { key: 'reason', description: 'Begründung des Vereins' }
+      ]
+    },
+    'RefereeCourseMailer#confirm_email' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'confirm_email',
+      description: 'Öffentliche Kursanmeldung: Bitte um Bestätigung der E-Mail-Adresse (Double-Opt-in).',
+      default_subject: 'Bitte Anmeldung bestätigen: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine (ohne Online-Link)' },
+        { key: 'link', description: 'Link zur Bestätigung' }
+      ]
+    },
+    'RefereeCourseMailer#guardian_consent' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'guardian_consent',
+      description: 'Bitte um Einwilligung der Erziehungsberechtigten bei Anmeldungen unter 16 Jahren.',
+      default_subject: 'Einwilligung zur Anmeldung: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' },
+        { key: 'guardian_name', description: 'Name der Erziehungsberechtigten' },
+        { key: 'link', description: 'Link zur Einwilligung' }
+      ]
+    },
     'ClubMailer#game_day_scan_reminder' => {
       mailer_class: 'ClubMailer',
       action_name: 'game_day_scan_reminder',
@@ -132,6 +289,23 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       placeholders: [
         { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
         { key: 'referee_name', description: 'Vor- und Nachname des Schiris' }
+      ]
+    },
+    'RefereeMailer#number_change' => {
+      mailer_class: 'RefereeMailer',
+      action_name: 'number_change',
+      description: 'Benachrichtigung an Schiri, dessen Nummer sich nach dem Zusammenführen zweier Profile ändert: ' \
+                   'Die Person behält die kleinere Nummer. Mit Konto nennt die Mail auch den neuen Login. ' \
+                   'Ein gepflegter Text sieht nicht, ob das Konto neu ist (Hinweis auf „Passwort vergessen“).',
+      default_subject: 'Deine Schiedsrichternummer hat sich geändert – {{referee_name}}',
+      default_from: nil,
+      default_reply_to: 'rsk@floorball.de',
+      placeholders: [
+        { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
+        { key: 'referee_name', description: 'Vor- und Nachname des Schiris' },
+        { key: 'previous_number', description: 'Bisherige Schiedsrichternummer' },
+        { key: 'new_number', description: 'Neue Schiedsrichternummer' },
+        { key: 'user_name', description: 'Login des Schiri-Kontos (leer, wenn es keines gibt)' }
       ]
     },
     'RefereeMailer#qualification_notification' => {
@@ -188,11 +362,11 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       mailer_class: 'RefereeMailer',
       action_name: 'club_exclusion_requested',
       description: 'Antrag eines Schiris auf Aufnahme oder Streichung eines Vereins in seiner ' \
-                   'Ausschlussliste. Geht immer an das zentrale Ansetzungs-Postfach von Floorball ' \
-                   'Deutschland, weil dort über die Anträge entschieden wird.',
+                   'Ausschlussliste. Geht immer an das RSK-Postfach von Floorball Deutschland, ' \
+                   'weil dort über die Anträge entschieden wird.',
       default_subject: 'Antrag Vereins-Ausschluss – {{referee_name}}',
       default_from: nil,
-      # Reply-To wird zur Laufzeit gesetzt (Schiri bzw. zentrales Postfach).
+      # Reply-To wird zur Laufzeit gesetzt (Schiri bzw. RSK-Postfach).
       default_reply_to: nil,
       placeholders: [
         { key: 'referee_name', description: 'Vor- und Nachname des Schiris' },
@@ -203,10 +377,10 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
     'RefereeMailer#club_exclusion_decision' => {
       mailer_class: 'RefereeMailer',
       action_name: 'club_exclusion_decision',
-      description: 'Entscheidung der Ansetzung über einen Antrag zur Vereins-Ausschlussliste.',
+      description: 'Entscheidung der RSK über einen Antrag zur Vereins-Ausschlussliste.',
       default_subject: 'Vereins-Ausschluss {{decision}} – {{club_name}}',
       default_from: nil,
-      # Reply-To wird zur Laufzeit gesetzt (zentrales Ansetzungs-Postfach).
+      # Reply-To wird zur Laufzeit gesetzt (RSK-Postfach).
       default_reply_to: nil,
       placeholders: [
         { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
@@ -345,13 +519,15 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         # ERB-View vollständig (siehe TemplatedMailer), und nur dort stehen
         # @upload_url und @deadline.
         { key: 'upload_url', description: 'Adresse der Spielseite mit dem Upload des Berichtsformulars' },
-        { key: 'deadline', description: 'Frist für die Abgabe (Datum und Uhrzeit)' }
+        { key: 'deadline', description: 'Frist für die Abgabe (Datum und Uhrzeit)' },
+        { key: 'report_reasons', description: 'Anlass des Berichts, z. B. „eine Matchstrafe und ein besonderes Ereignis“' },
+        { key: 'report_recipient', description: 'Wohin der Bericht nach dem Upload geht, z. B. „die zuständige VSK“' }
       ]
     },
     'RefereeMailer#referee_report_to_vsk' => {
       mailer_class: 'RefereeMailer',
       action_name: 'referee_report_to_vsk',
-      description: 'Weiterleitung des eingereichten Berichtsformulars an die VSK/SBK (mit PDF-Anhang).',
+      description: 'Weiterleitung des eingereichten Berichtsformulars an die VSK bei einer Matchstrafe (mit PDF-Anhang).',
       default_subject: 'Berichtsformular eingereicht – Spielnummer {{game_number}}',
       default_from: nil,
       default_reply_to: nil,
@@ -359,6 +535,22 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'game_number', description: 'Spielnummer' },
         { key: 'opened_by_name', description: 'Vor- und Nachname der Person, die den Verfahrensvorschlag ' \
                                               'angenommen hat (leer beim automatischen Versand)' }
+      ]
+    },
+    'RefereeMailer#referee_report_to_sbk' => {
+      mailer_class: 'RefereeMailer',
+      action_name: 'referee_report_to_sbk',
+      description: 'Weiterleitung des eingereichten Berichtsformulars an die SBK: zur Kenntnis bei technischer ' \
+                   'Matchstrafe oder besonderem Ereignis, im manuellen Modus auch bei einer Matchstrafe mit ' \
+                   'der Aufforderung, das VSK-Verfahren einzuleiten (mit PDF-Anhang).',
+      default_subject: 'Berichtsformular eingereicht – Spielnummer {{game_number}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'game_number', description: 'Spielnummer' },
+        { key: 'report_reasons', description: 'Anlass des Berichts, z. B. „eine technische Matchstrafe“' },
+        { key: 'proceedings_url', description: 'Link auf die Verfahrensvorschläge (nur bei Matchstrafe im ' \
+                                               'manuellen Modus mit offenem Vorschlag, sonst leer)' }
       ]
     },
     'TransferRequestMailer#new_request_to_former_club' => {
@@ -590,7 +782,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       placeholders: [
         { key: 'league_name', description: 'Name der Liga' },
         { key: 'game_day_date', description: 'Datum des Spieltags' },
-        { key: 'games', description: 'Betroffene Spiele mit Spielnummer, Anwurf und Mannschaften' }
+        { key: 'games', description: 'Betroffene Spiele mit Spielnummer, Anwurf und Mannschaften' },
+        { key: 'comment', description: 'Anmerkung zum Einspruch (leer, wenn keine angegeben wurde)' }
       ]
     },
     'GameDayMailer#team_checklist_veto' => {
@@ -603,7 +796,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       placeholders: [
         { key: 'league_name', description: 'Name der Liga' },
         { key: 'game_day_date', description: 'Datum des Spieltags' },
-        { key: 'games', description: 'Betroffene Spiele mit Spielnummer, Anwurf und Mannschaften' }
+        { key: 'games', description: 'Betroffene Spiele mit Spielnummer, Anwurf und Mannschaften' },
+        { key: 'comment', description: 'Anmerkung zum Einspruch (leer, wenn keine angegeben wurde)' }
       ]
     },
     'GameDayMailer#published_referees_to_host' => {

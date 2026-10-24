@@ -15,15 +15,26 @@ class GameDayOverlayLink < ApplicationRecord
   belongs_to :created_by, class_name: 'User'
 
   # Mindestdauer ab Ausgabe, siehe GameDayLinkWindow. Das eigentliche Fenster
-  # hängt am Spieltag und ist dasselbe wie beim Sekretariatslink. Früher galt
-  # der Zugang bewusst kürzer (36 h ab Ausgabe), weil das Token die Verzögerung
-  # für Live-Daten aufhebt. Vor dem Spieltag gibt es aber noch keine Live-Daten
-  # und nach seinem Ende keine mehr, das längere Fenster gibt also nichts preis,
-  # was nicht ohnehin öffentlich ist.
+  # hängt am Spieltag und endet wie beim Sekretariatslink am Ende des Folgetags.
+  # Früher galt der Zugang bewusst kürzer (36 h ab Ausgabe), weil das Token die
+  # Verzögerung für Live-Daten aufhebt. Vor dem Spieltag gibt es aber noch keine
+  # Live-Daten und nach seinem Ende keine mehr, das längere Fenster gibt also
+  # nichts preis, was nicht ohnehin öffentlich ist.
   LIFETIME = 36.hours
+
+  # Beginnt früher als der Sekretariatslink (3 Tage): Die OBS-Szenen richtet ein
+  # Verein oft schon in der Woche vor dem Spieltag ein und testet sie. Der späte
+  # Beginn dort schützt Lizenzlisten und Spielbericht; dieses Token liest vor
+  # dem Spieltag nur, was ohnehin öffentlich ist, und schreibt allein den
+  # Steuerzustand der eigenen Einblendung.
+  LEAD_TIME = 7.days
 
   def self.minimum_validity
     LIFETIME
+  end
+
+  def self.lead_time
+    LEAD_TIME
   end
 
   # Ein aktiver Link je Spieltag: Ein erneutes Erzeugen zieht den alten zurück.

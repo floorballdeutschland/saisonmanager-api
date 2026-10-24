@@ -203,7 +203,7 @@ class RefereeEmailImportTest < ActiveSupport::TestCase
     assert_includes report[:invalid].first[:value], '4780'
   end
 
-  test 'schreibt nicht an einen zusammengefuehrten Datensatz' do
+  test 'schreibt nicht an einen zusammengefuehrten Datensatz, sondern an seinen Master' do
     master = create(:referee, lizenznummer: 4719, email: nil)
     secondary = create(:referee, lizenznummer: 4720, email: nil)
     secondary.merge_into!(master)
@@ -211,6 +211,7 @@ class RefereeEmailImportTest < ActiveSupport::TestCase
     report = RefereeEmailImport.new(csv_content: csv([[4720, 'dublette@example.org']])).call
 
     assert_nil secondary.reload.email
-    assert_equal [4720], report[:not_found]
+    assert_equal 'dublette@example.org', master.reload.email
+    assert_empty report[:not_found]
   end
 end

@@ -99,6 +99,17 @@ namespace :streaming do
            "#{veroeffentlicht[:linked] ? ' -- im Spielplan verlinkt' : ''}"
     end
 
+    # Sprungmarken in der Beschreibung beendeter Aufzeichnungen (api#815),
+    # derselbe Lauf, keine eigene Crontab-Zeile.
+    ergebnis[:chapters].to_a.each do |marken|
+      puts "  SPRUNGMARKEN: #{marken[:broadcast_id]} (#{marken[:result]}, #{marken[:markers]} Marke(n))"
+    end
+
+    # Verschickte Links zum Kalibrieren (fe#560), ohne Adresse und Token.
+    ergebnis[:highlight_links].to_a.each do |game_id|
+      puts "  HIGHLIGHT-LINK: Spiel #{game_id} verschickt"
+    end
+
     # Probleme erreichen einen Menschen, statt in einer Logdatei zu versinken,
     # die alle fünf Minuten um mehrere Zeilen wächst. Der Cronjob meldet damit
     # einen Fehlercode, und Sentry bekommt eine Meldung -- ein hängengebliebener

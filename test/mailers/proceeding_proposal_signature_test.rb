@@ -25,7 +25,7 @@ class ProceedingProposalSignatureTest < ActionDispatch::IntegrationTest
                          events: [], players: { 'home' => [], 'guest' => [] })
     @uploader = create(:user, :admin, first_name: 'Uli', last_name: 'Uploader')
     report = @game.build_game_referee_report(uploaded_by: @uploader)
-    report.file.attach(io: StringIO.new('PDF'), filename: 'report.pdf', content_type: 'application/pdf')
+    report.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'report.pdf', content_type: 'application/pdf')
     report.save!
     @proposal = ProceedingProposal.create!(game: @game, state_association: @sa, status: 'pending',
                                            created_by_id: @uploader.id)

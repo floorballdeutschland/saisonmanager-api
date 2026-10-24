@@ -193,6 +193,11 @@ Rails.application.routes.draw do
       get 'admin/players/:id', to: 'players#admin_player'
       post 'admin/players', to: 'players#admin_player_update'
 
+      # Liste und Kurzname auch unter api/v2: Nur dieser Praefix ist von aussen
+      # erreichbar, die gleichnamigen Routen oben sind es (bis auf nginx-Umwege)
+      # nicht. Die API-Doku nennt seit jeher diese Pfade.
+      get 'game_operations', to: 'game_operations#index'
+      get 'game_operations/by_shortname/:name', to: 'game_operations#by_shortname'
       get 'game_operations/:id/leagues/:season_id', to: 'game_operations#index_leagues'
       get 'game_operations/:id/leagues', to: 'game_operations#index_leagues'
 
@@ -201,6 +206,7 @@ Rails.application.routes.draw do
 
       get 'user/clubs_and_teams', to: 'clubs#user_clubs_and_teams'
       get 'vm/clubs_and_teams', to: 'clubs#vm_clubs_and_teams'
+      get 'vm/clubs/:id/license_summary', to: 'clubs#vm_license_summary'
       get 'user/team/:id/licenses', to: 'clubs#user_team_licenses'
 
       post 'user/games/:id/starting/:side/:position/set_player', to: 'games#set_starting_player'
@@ -280,6 +286,7 @@ Rails.application.routes.draw do
       get  'referee/observations/games',    to: 'referee_observations#games'
       get  'referee/observations/received', to: 'referee_observations#received'
       post 'referee/observations',          to: 'referee_observations#create'
+      patch 'referee/observations/:id',     to: 'referee_observations#update'
 
       # Vereins-Feedback zur eigenen Person, nur als Kennzahlen ab fuenf
       # Rueckmeldungen (siehe RefereeFeedbackSummariesController).
@@ -357,6 +364,26 @@ Rails.application.routes.draw do
         resources :referee_tags, only: %i[index create update destroy]
         resources :referee_license_levels, only: %i[index create update destroy]
         resources :penalty_codes, only: %i[index create update destroy]
+        resource :referee_course_settings, only: %i[show update]
+        resources :referee_courses, only: %i[index show create update destroy] do
+          get :options, on: :collection
+          post :submit_results, on: :member
+          get :participants, on: :member
+          resources :fields, controller: 'referee_course_fields', only: %i[create update destroy]
+          resources :registrations, controller: 'referee_course_registrations',
+                                    only: %i[index create update destroy]
+          resources :leads, controller: 'referee_course_leads', only: %i[create update destroy]
+        end
+        resources :referee_course_field_templates, only: %i[index create update destroy]
+        resources :referee_course_billing_exports, only: %i[index create] do
+          get :preview, on: :collection
+          get :download, on: :member
+        end
+        resources :referee_course_licensing, only: %i[index update] do
+          post :approve, on: :member
+          post :reject, on: :member
+          post :approve_many, on: :collection
+        end
         resources :referee_course_imports, only: %i[index show create destroy] do
           post :submit, on: :member
         end
@@ -385,6 +412,9 @@ Rails.application.routes.draw do
         resources :game_days, only: [] do
           get :report_overview, on: :collection
         end
+        # Erledigt-Vermerk der SBK in der Arbeitsansicht „Spielberichte".
+        post   'games/:game_id/report_review', to: 'game_report_reviews#create'
+        delete 'games/:game_id/report_review', to: 'game_report_reviews#destroy'
         resources :state_associations, only: %i[index show create update destroy] do
           resources :checklist_items, only: %i[create update destroy],
                                       controller: 'state_association_checklist_items'
@@ -496,6 +526,7 @@ Rails.application.routes.draw do
       post 'user/game_days/:game_day_id/secretary_link', to: 'game_day_secretary_links#create'
       get  'user/game_days/:game_day_id/secretary_link', to: 'game_day_secretary_links#show'
       get  'user/secretary_game_days',                   to: 'game_day_secretary_links#index'
+      get  'user/secretary_game_days/season',            to: 'game_day_secretary_links#season'
 
       # Livestream-Overlays: Datenquelle der OBS-Browser-Quellen und des
       # Steuer-Docks (nur Token, keine Anmeldung, siehe
@@ -521,6 +552,31 @@ Rails.application.routes.draw do
       get  'user/referee_feedbacks', to: 'user_referee_feedbacks#index'
       post 'user/referee_feedbacks', to: 'user_referee_feedbacks#create'
 
+      # Schiedsrichterkurse: Schiri-Portal, Verein, Einwilligung Erziehungsberechtigte
+      get    'referee/courses',                  to: 'referee_courses_portal#index'
+      post   'referee/courses/:id/registration', to: 'referee_courses_portal#register'
+      patch  'referee/courses/:id/registration', to: 'referee_courses_portal#update_registration'
+      delete 'referee/courses/:id/registration', to: 'referee_courses_portal#cancel'
+      get    'club/referee_courses',                                 to: 'club_referee_courses#index'
+      get    'club/referee_courses/referees',                        to: 'club_referee_courses#referees'
+      post   'club/referee_courses/:id/registrations',               to: 'club_referee_courses#register'
+      delete 'club/referee_courses/registrations/:registration_id',  to: 'club_referee_courses#cancel'
+      post   'club/referee_courses/registrations/:registration_id/confirm', to: 'club_referee_courses#confirm'
+      post   'club/referee_courses/registrations/:registration_id/decline', to: 'club_referee_courses#decline'
+      get    'public/referee_courses',                    to: 'public_referee_courses#index'
+      get    'public/referee_courses/clubs',              to: 'public_referee_courses#clubs'
+      get    'public/referee_courses/:id',                to: 'public_referee_courses#show'
+      post   'public/referee_courses/:id/registrations',  to: 'public_referee_courses#register'
+      get    'public/course_registrations/confirm/:token', to: 'public_course_registrations#show_confirm'
+      post   'public/course_registrations/confirm/:token', to: 'public_course_registrations#confirm'
+      get    'public/course_registrations/cancel/:token',  to: 'public_course_registrations#show_cancel'
+      post   'public/course_registrations/cancel/:token',  to: 'public_course_registrations#cancel'
+      get    'public/course_guardian_consents/:token', to: 'public_course_guardian_consents#show'
+      post   'public/course_guardian_consents/:token', to: 'public_course_guardian_consents#create'
+      # Kursleitung: „Meine Kurse" (CourseLeadCoursesController)
+      get   'course_lead/courses',     to: 'course_lead_courses#index'
+      get   'course_lead/courses/:id', to: 'course_lead_courses#show'
+      patch 'course_lead/courses/:id/registrations/:registration_id', to: 'course_lead_courses#update_registration'
       get   'user/referee_feedback_settings',     to: 'user_referee_feedback_settings#index'
       patch 'user/referee_feedback_settings/:id', to: 'user_referee_feedback_settings#update'
 
@@ -543,7 +599,29 @@ Rails.application.routes.draw do
           # Hallen-Belegungskonflikte für ein (geplantes) Spiel prüfen, ohne zu speichern.
           get :scheduling_conflicts
         end
+        # Tabletmodus (api#816): Schüsse, Verknüpfung mit Toren, öffentliche Statistik.
+        member do
+          get    'shots', to: 'game_shots#index'
+          post   'shots', to: 'game_shots#create'
+          patch  'shots/:client_uuid', to: 'game_shots#update'
+          delete 'shots/:client_uuid', to: 'game_shots#destroy'
+          post   'shots/:client_uuid/link', to: 'game_shots#link'
+          put    'tablet_capture', to: 'game_shots#tablet_capture'
+          get    'detailed_stats', to: 'game_shots#detailed_stats'
+          get    'highlights', to: 'game_shots#highlights'
+          post   'tablet_feedback', to: 'game_shots#feedback'
+          # Kalibrierung und Szenenauswahl (fe#560)
+          post   'highlight_request', to: 'highlight_editor#request_link'
+          get    'highlight_editor', to: 'highlight_editor#show'
+          put    'highlight_editor', to: 'highlight_editor#update'
+        end
       end
+      # Mail-Link zum Kalibrieren und Auswählen der Highlights (fe#560), Token
+      # im Query-String.
+      get 'highlight_editor', to: 'highlight_editor#show_by_token'
+      put 'highlight_editor', to: 'highlight_editor#update_by_token'
+      # Serverzeit für den Uhrenabgleich des Tablets, ganz offen.
+      get 'server_time', to: 'server_time#show'
       resources :game_days
 
       get 'init', to: 'settings#init'

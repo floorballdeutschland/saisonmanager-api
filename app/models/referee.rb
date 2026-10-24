@@ -15,6 +15,9 @@ class Referee < ApplicationRecord
   has_many :referee_club_exclusions, dependent: :destroy
   has_many :referee_club_exclusion_requests, dependent: :destroy
   has_many :referee_change_requests, dependent: :destroy
+  # Kursanmeldungen bleiben beim Loeschen des Schiris erhalten (Abrechnung,
+  # Teilnehmerliste), nur die Zuordnung faellt weg.
+  has_many :referee_course_registrations, dependent: :nullify
   has_many :game_day_referee_confirmations, dependent: :destroy
   has_many :referee_qualification_types, through: :referee_qualifications
   has_many :referee_tags, through: :referee_taggings
@@ -345,12 +348,93 @@ class Referee < ApplicationRecord
     result
   end
 
-  def merge_into!(master, user_id = nil)
+  # Wer bei einer Zusammenlegung Master wird: das Profil mit der kleinsten
+  # Schiedsrichternummer. Eine Person behaelt damit die Nummer, unter der sie
+  # zuerst gefuehrt wurde, egal von welchem Profil aus jemand zusammenfuehrt.
+  # Ohne Nummer auf einer Seite (Gaeste, Handanlage) gewinnt das Profil mit
+  # Nummer; tragen beide keine, bleibt die gewaehlte Richtung.
+  # Rueckgabe: [master, secondary].
+  def self.merge_roles(chosen_master, other)
+    mine = chosen_master.lizenznummer
+    theirs = other.lizenznummer
+    return [chosen_master, other] if theirs.blank? || (mine.present? && mine <= theirs)
+
+    [other, chosen_master]
+  end
+
+  # Das lebende Profil hinter einer Schiedsrichternummer. Nach einer
+  # Zusammenlegung haengt die aufgegebene Nummer weiter an der Dublette; wer sie
+  # in einer Kursmeldung oder bei der Kursanmeldung angibt, soll trotzdem beim
+  # Master landen und nicht ins Leere laufen (oder, im Kursimport, eine neue
+  # Dublette anstossen).
+  def self.canonical_for_lizenznummer(number)
+    return nil if number.blank?
+
+    find_by(lizenznummer: number)&.canonical_profile
+  end
+
+  # Folgt merged_into_id bis zum Master. nil bei einer kaputten oder
+  # zirkulaeren Kette.
+  def canonical_profile
+    current = self
+    seen = Set.new
+    while current.merged_into_id.present?
+      return nil unless seen.add?(current.id)
+
+      current = Referee.find_by(id: current.merged_into_id)
+      return nil if current.nil?
+    end
+    current
+  end
+
+  # Ergebnis einer Zusammenlegung fuer Aufrufer, die es protokollieren (der
+  # Rake-Lauf): was mit dem Konto passiert ist und wie die Nummern-Mail ausging
+  # (RefereeNotification-Status, nil ohne Nummernwechsel).
+  MergeOutcome = Struct.new(:account, :mail, keyword_init: true)
+
+  # Was beim Zusammenfuehren mit dem Konto dieser Dublette passiert. Eine Stelle
+  # fuer merge_into! und die Vorschau im Rake-Lauf, damit beide dasselbe sagen.
+  # - :none   keine Dublette mit Konto
+  # - :detach der Master hat schon ein Konto; das der Dublette wird abgehaengt,
+  #           die Person meldet sich kuenftig mit dem des Masters an
+  # - :move   das Konto wandert auf den Master; rename_to ist der neue Name oder
+  #           nil, blocked der gewuenschte, aber schon vergebene Name
+  #
+  # Frisch aus der Datenbank, nicht ueber has_one :user. Zum einen ist die
+  # Assoziation nach dem Anlegen eines Profils oft schon als nil
+  # zwischengespeichert. Zum anderen schrieb das Autosave der Assoziation beim
+  # abschliessenden save! referee_id eines darueber umgehaengten Kontos wieder
+  # auf die Dublette zurueck; so blieb bis Oktober 2026 jedes Konto am toten
+  # Profil haengen. Ein eigenes Objekt beruehrt die Assoziation nicht.
+  def merge_account_plan(master)
+    account = User.find_by(referee_id: id)
+    return { action: :none } if account.nil?
+
+    master_account = User.find_by(referee_id: master.id)
+    return { action: :detach, user: account, master_user: master_account } if master_account
+
+    target = _rename_target(account, master)
+    if target && RefereeAccountCreator.user_name_taken?(target, account.id)
+      { action: :move, user: account, rename_to: nil, blocked: target }
+    else
+      { action: :move, user: account, rename_to: target }
+    end
+  end
+
+  def merge_into!(master, user_id = nil, deliver_now: false)
     raise ArgumentError, 'Master und Secondary dürfen nicht identisch sein' if id == master.id
     raise ArgumentError, 'Secondary ist bereits zusammengeführt' if merged_into_id.present?
     raise ArgumentError, 'Master ist bereits zusammengeführt' if master.merged_into_id.present?
 
     merged_label = "#{nachname}, #{vorname}"
+    # Traegt die Dublette die spaetere Lizenz, ist sie das Profil, unter dem die
+    # Person heute unterwegs ist. Ihre Stammdaten gewinnen dann, und ihre Nummer
+    # ist die, die sich fuer die Person aendert. Vor _adopt_license_fields
+    # bestimmen, das den Master angleicht.
+    secondary_current = _license_newer_than?(master)
+    previous_number = lizenznummer
+    account_plan = merge_account_plan(master)
+    account_note = _describe_account_plan(account_plan)
 
     ActiveRecord::Base.transaction do
       # Lizenzstufe und Gueltigkeit stehen bewusst NICHT in dieser Liste, siehe
@@ -359,8 +443,13 @@ class Referee < ApplicationRecord
         vorname nachname geburtsdatum email telefonnummer club_id game_operation_id
         strasse hausnummer plz ort
       ]
+      # Hat der Master ein Konto, gehoert die Adresse dem Konto (User#confirm_email_change!
+      # haelt beide gleich, der Kursimport ueberschreibt sie dann auch nicht).
+      scalar_fields -= %w[email] if User.exists?(referee_id: master.id)
       scalar_fields.each do |field|
-        master[field] = self[field] if master[field].blank? && self[field].present?
+        next if self[field].blank?
+
+        master[field] = self[field] if secondary_current || master[field].blank?
       end
 
       # Kontaktfreigabe fuers Gespann: Das Konto haengt danach am Master, die
@@ -420,6 +509,8 @@ class Referee < ApplicationRecord
       referee_change_requests.pending.where(correction_type: master_pending_types).destroy_all
       referee_change_requests.reload.update_all(referee_id: master.id)
 
+      _repoint_course_registrations(master)
+
       # Beobachtungsbögen: Der Coach-Bezug und die erhaltenen Bewertungen wandern
       # aufs Masterprofil, sonst hinge die Entwicklungshistorie am toten
       # Zweitprofil und wäre für die betroffene Person unsichtbar (ihr Konto
@@ -439,11 +530,14 @@ class Referee < ApplicationRecord
         .update_all(referee_id: master.id)
       referee_observation_ratings.reload.destroy_all
 
-      if user.present?
-        if master.user.nil?
-          user.update!(referee_id: master.id)
+      if (moved_user = account_plan[:user])
+        if account_plan[:action] == :move
+          moved_user.update!(referee_id: master.id)
+          moved_user.update!(user_name: account_plan[:rename_to]) if account_plan[:rename_to]
         else
-          user.update!(referee_id: nil)
+          Rails.logger.info("Referee#merge_into!: Konto #{moved_user.user_name} von Dublette #{id} abgehaengt, " \
+                            "Master #{master.id} behaelt #{account_plan[:master_user].user_name}")
+          moved_user.update!(referee_id: nil)
         end
       end
 
@@ -461,6 +555,9 @@ class Referee < ApplicationRecord
         user_id: user_id
       )
     end
+
+    mail = _notify_number_change(master, previous_number, account_plan, deliver_now) if secondary_current
+    MergeOutcome.new(account: account_note, mail: mail)
   end
 
   private
@@ -553,6 +650,52 @@ class Referee < ApplicationRecord
   # eine Lizenz, die es nie gab. Die Lizenznummer folgt weiter der Gegenregel
   # (die aeltere, bereits kommunizierte bleibt) -- Nummer und Stufe haengen nicht
   # aneinander.
+  # Ein Konto, das vom Zweitprofil auf den Master wandert, heisst danach wie
+  # jedes Schiri-Konto nach der Nummer seines Profils. Nur automatisch vergebene
+  # Namen (sr-<alte Nummer>) werden umbenannt, ein von Hand gesetzter Name bleibt.
+  # Und nur, wenn die Person ihre Nummer wechselt (die Dublette ist ihr aktuelles
+  # Profil): Nur dann geht die Mail raus, die den neuen Login nennt. Sonst
+  # wuerde ein Login still verschwinden.
+  def _rename_target(account, master)
+    return nil if guest? || lizenznummer.blank? || master.lizenznummer.blank?
+    return nil if lizenznummer == master.lizenznummer || !_license_newer_than?(master)
+    return nil unless account.user_name.to_s.casecmp?("sr-#{lizenznummer}")
+
+    RefereeAccountCreator.user_name_for(master, ignore_user_id: account.id)
+  end
+
+  def _describe_account_plan(plan)
+    case plan[:action]
+    when :detach
+      "Konto #{plan[:user].user_name} abgehaengt, Login ist #{plan[:master_user].user_name} (Konto des Masters)"
+    when :move
+      if plan[:rename_to]
+        "Konto #{plan[:user].user_name} -> #{plan[:rename_to]}"
+      elsif plan[:blocked]
+        "Konto #{plan[:user].user_name} bleibt so, #{plan[:blocked]} ist schon vergeben"
+      else
+        "Konto #{plan[:user].user_name} wandert mit, Name bleibt"
+      end
+    end
+  end
+
+  # Die Person war unter der Nummer der Dublette unterwegs und fuehrt ab jetzt
+  # die des Masters. Nach dem Commit, damit eine zurueckgerollte Zusammenlegung
+  # keine Mail ausloest. Rueckgabe: Status aus RefereeNotification oder nil.
+  #
+  # Login: bei :move das mitgewanderte Konto (Passwort unveraendert), bei
+  # :detach das des Masters, dessen Passwort die Person womoeglich nie kannte;
+  # die Mail verweist dann auf „Passwort vergessen".
+  def _notify_number_change(master, previous_number, account_plan, deliver_now)
+    return nil if previous_number.blank? || master.lizenznummer.blank? || previous_number == master.lizenznummer
+
+    login = User.find_by(referee_id: master.id)
+    RefereeNotification.number_change(master, previous_number: previous_number,
+                                              user_name: login&.user_name,
+                                              own_account: account_plan[:action] != :detach,
+                                              deliver_now: deliver_now)
+  end
+
   def _adopt_license_fields(master)
     if _license_newer_than?(master)
       _log_downgrade(master)
@@ -630,6 +773,30 @@ class Referee < ApplicationRecord
       updated_at: Time.current
     )
     RefereeCourseResult.where(referee_id: id).update_all(referee_id: master.id)
+  end
+
+  # Kursanmeldungen wandern mit, sonst vergaebe die Lizenzvergabe die Lizenz
+  # spaeter an das tote Zweitprofil. Sind beide Profile im selben Kurs, bleibt
+  # nur eine aktive Anmeldung (bevorzugt die des Masters). Die andere wird
+  # abgesagt und verliert den Schiri (Eindeutigkeit Kurs+Schiri). Bliebe sie
+  # aktiv ohne Schiri, wuerde sie beim Einreichen zur neuen Person, und FD
+  # legte einen zweiten Schiri samt Konto an; sie hielte zudem einen Platz und
+  # wuerde doppelt abgerechnet.
+  def _repoint_course_registrations(master)
+    cancelled = RefereeCourseRegistration::CANCELLED_STATUSES
+    master_rows = master.referee_course_registrations.index_by(&:referee_course_id)
+    freed_courses = []
+    referee_course_registrations.where(referee_course_id: master_rows.keys).find_each do |row|
+      master_row = master_rows[row.referee_course_id]
+      keep_master = !cancelled.include?(master_row.status) || cancelled.include?(row.status)
+      loser = keep_master ? row : master_row
+      attrs = { referee_id: nil, updated_at: Time.current }
+      attrs.merge!(status: 'cancelled_by_organizer', cancelled_at: Time.current) unless cancelled.include?(loser.status)
+      freed_courses << loser.referee_course if RefereeCourseRegistration::SEAT_STATUSES.include?(loser.status)
+      loser.update_columns(attrs)
+    end
+    referee_course_registrations.update_all(referee_id: master.id)
+    freed_courses.each { |course| RefereeCourseRegistrar.new(course).promote_waitlist }
   end
 
   # Haengt eine Zeile von der Dublette auf den Master um, laesst aber die Zeilen

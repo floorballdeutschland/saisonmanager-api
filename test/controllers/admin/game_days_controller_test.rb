@@ -96,7 +96,7 @@ module Admin
       uploader = create_user(user_group_id: 3, game_operation_id: 0)
       uploader.update_column(:email, 'uploader@example.org')
       scan = GameScan.new(game: @game, uploaded_by: uploader, expires_at: 12.months.from_now)
-      scan.scan_file.attach(io: StringIO.new('PDF'), filename: 'bogen.pdf', content_type: 'application/pdf')
+      scan.scan_file.attach(io: StringIO.new('%PDF-1.4'), filename: 'bogen.pdf', content_type: 'application/pdf')
       scan.save!
       scan.update_column(:created_at, Time.zone.parse('2026-02-04 10:00'))
 
@@ -115,10 +115,10 @@ module Admin
       uploader = create_user(user_group_id: 3, game_operation_id: 0)
       uploader.update_columns(first_name: '', last_name: '', email: 'ohne-name@example.org')
       scan = GameScan.new(game: @game, uploaded_by: uploader, expires_at: 12.months.from_now)
-      scan.scan_file.attach(io: StringIO.new('PDF'), filename: 'bogen.pdf', content_type: 'application/pdf')
+      scan.scan_file.attach(io: StringIO.new('%PDF-1.4'), filename: 'bogen.pdf', content_type: 'application/pdf')
       scan.save!
       report = @game.build_game_referee_report(uploaded_by: uploader)
-      report.file.attach(io: StringIO.new('PDF'), filename: 'r.pdf', content_type: 'application/pdf')
+      report.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'r.pdf', content_type: 'application/pdf')
       report.save!
 
       login(sbk_user(@go.id))
@@ -133,7 +133,7 @@ module Admin
       uploader = create_user(user_group_id: 3, game_operation_id: 0)
       uploader.update_column(:email, '')
       scan = GameScan.new(game: @game, uploaded_by: uploader, expires_at: 12.months.from_now)
-      scan.scan_file.attach(io: StringIO.new('PDF'), filename: 'bogen.pdf', content_type: 'application/pdf')
+      scan.scan_file.attach(io: StringIO.new('%PDF-1.4'), filename: 'bogen.pdf', content_type: 'application/pdf')
       scan.save!
 
       login(sbk_user(@go.id))
@@ -172,7 +172,27 @@ module Admin
       assert_equal 'Hallenausfall', flags['special_event_string']
       assert flags['missing_referee2']
       assert flags['missing_audience']
-      assert flags['missing_signatures']
+      # Ein Forfait-Spiel wurde nicht gespielt, auf seinem Bogen unterschreibt
+      # niemand (Game#missing_signatures).
+      assert_not flags['missing_signatures']
+    end
+
+    test 'fehlende Unterschriften werden gemeldet' do
+      @game.update!(**all_signatures, home_captain_signed: false)
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      assert row(@game.id)['flags']['missing_signatures']
+    end
+
+    test 'ohne zweiten Schiedsrichter fehlt seine Unterschrift nicht' do
+      @game.update!(**all_signatures, referee2_signed: false, referee2_string: '')
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      assert_not row(@game.id)['flags']['missing_signatures']
+
+      @game.update!(referee2_string: '123 MUSTER, Max')
+      get OVERVIEW_PATH
+      assert row(@game.id)['flags']['missing_signatures']
     end
 
     test 'verknüpfte Vorgänge: Verfahrensvorschlag und verneinte Checklistenpunkte' do
@@ -354,7 +374,7 @@ module Admin
 
     test 'vollstaendig gezeichnetes Spiel meldet keine fehlenden Angaben' do
       @game.update!(referee1_signed: true, time_keeper_signed: true, record_keeper_signed: true,
-                    home_captain_signed: true, guest_captain_signed: true,
+                    home_captain_signed: true, guest_captain_signed: true, referee2_signed: true,
                     referee2_string: '123 MUSTER, Max', audience: 120)
       login(sbk_user(@go.id))
       get OVERVIEW_PATH
@@ -486,7 +506,7 @@ module Admin
       uploader = create_user(user_group_id: 6, game_operation_id: 0)
       uploader.update_column(:email, 'schiri@example.org')
       report = @game.build_game_referee_report(uploaded_by: uploader)
-      report.file.attach(io: StringIO.new('PDF'), filename: 'r.pdf', content_type: 'application/pdf')
+      report.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'r.pdf', content_type: 'application/pdf')
       report.save!
       item = @sa.checklist_items.create!(question: 'Schiris pünktlich?', position: 1)
       @game.update_columns(checklist_veto_submitted_at: Time.current,
@@ -505,6 +525,85 @@ module Admin
       # Auch der Einspruch liest den Text aus der Checkliste des Verbandes.
       assert_equal [{ 'item_id' => item.id, 'question' => 'Schiris pünktlich?' }],
                    data['checklist_veto_negative_items']
+    end
+
+    # Widersprüche von Gastmannschaft und Schiedsrichter gegen den
+    # Spieltagsbericht kamen bisher nur als Mail bei der SBK an. Sie gelten für
+    # den ganzen Spieltag und stehen deshalb an jedem seiner Spiele.
+    test 'Widerspruch von Gastmannschaft und Schiedsrichter steht an jedem Spiel des Spieltags' do
+      item = @sa.checklist_items.create!(question: 'Halle in Ordnung?', position: 1)
+      zweites = create_game(@game_day, game_number: '11')
+      referee = create(:referee, vorname: 'Erika', nachname: 'Pfeife')
+      GameDayTeamConfirmation.create!(
+        game_day: @game_day, team: @game.guest_team, confirmed_at: 2.hours.ago, properly_conducted: false,
+        checklist_answers: [{ 'item_id' => item.id, 'question' => 'Aus dem Formular', 'answer' => false }],
+        comment: 'Halle war um 13 Uhr noch zu.'
+      )
+      GameDayRefereeConfirmation.create!(
+        game_day: @game_day, referee:, confirmed_at: 1.hour.ago, properly_conducted: false,
+        checklist_answers: [{ 'item_id' => item.id, 'answer' => true }]
+      )
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+
+      [@game.id, zweites.id].each do |id|
+        data = row(id)
+        assert_equal 2, data['checklist_objection_count']
+        team, schiri = data['checklist_objections']
+        assert_equal 'team', team['kind']
+        assert_equal @game.guest_team.name, team['name']
+        assert team['confirmed_at'].present?
+        # Der Fragetext kommt aus der Checkliste des Verbandes, nicht aus der
+        # gespeicherten Antwort.
+        assert_equal [{ 'item_id' => item.id, 'question' => 'Halle in Ordnung?' }], team['negative_items']
+        assert_equal 'Halle war um 13 Uhr noch zu.', team['comment']
+        assert_equal 'referee', schiri['kind']
+        assert_equal 'Erika Pfeife', schiri['name']
+        assert_equal [], schiri['negative_items']
+        assert_nil schiri['comment']
+      end
+    end
+
+    test 'bestätigte Spieltage tragen keinen Widerspruch' do
+      GameDayTeamConfirmation.create!(game_day: @game_day, team: @game.guest_team,
+                                      confirmed_at: 1.hour.ago, properly_conducted: true)
+      GameDayRefereeConfirmation.create!(game_day: @game_day, referee: create(:referee),
+                                         confirmed_at: 1.hour.ago, properly_conducted: true)
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+
+      data = row(@game.id)
+      assert_equal 0, data['checklist_objection_count']
+      assert_equal [], data['checklist_objections']
+    end
+
+    test 'Widersprüche werden für alle Zeilen gemeinsam geladen' do
+      3.times do |i|
+        tag = GameDay.create!(league: @league, arena: @arena, club: @club, number: 30 + i, date: '2026-02-01')
+        game = create_game(tag, game_number: (40 + i).to_s)
+        GameDayTeamConfirmation.create!(game_day: tag, team: game.guest_team,
+                                        confirmed_at: 1.hour.ago, properly_conducted: false)
+        GameDayRefereeConfirmation.create!(game_day: tag, referee: create(:referee),
+                                           confirmed_at: 1.hour.ago, properly_conducted: false)
+      end
+
+      login(sbk_user(@go.id))
+      sqls = []
+      subscriber = ActiveSupport::Notifications.subscribe('sql.active_record') do |*, payload|
+        sqls << payload[:sql]
+      end
+      begin
+        get OVERVIEW_PATH
+      ensure
+        ActiveSupport::Notifications.unsubscribe(subscriber)
+      end
+
+      assert_response :success
+      assert_equal(1, sqls.count { |sql| sql.include?('FROM "game_day_team_confirmations"') })
+      assert_equal(1, sqls.count { |sql| sql.include?('FROM "game_day_referee_confirmations"') })
+      assert_equal(1, sqls.count { |sql| sql.include?('FROM "referees"') })
     end
 
     private

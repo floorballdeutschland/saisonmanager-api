@@ -1,0 +1,26 @@
+<h2>Rückmeldung zum Tabletmodus (Beta)</h2>
+
+<p>
+  <strong>Spiel:</strong>
+  <%= @game.game_number %> · <%= @game.home_team_name %> – <%= @game.guest_team_name %><br>
+  <% if @game.game_day %>
+    <strong>Liga:</strong> <%= @game.game_day.league&.name %>,
+    Spieltag vom <%= format_game_day_date(@game.game_day.date) %><br>
+  <% end %>
+  <strong>Erfasste Schüsse:</strong> <%= @shot_count %><br>
+  <strong>Erfasste Freischläge:</strong> <%= @free_hit_count %><br>
+  <strong>Von:</strong> <%= @sender %><br>
+  <strong>Antwort an:</strong> <%= @reply_to.presence || 'keine Adresse angegeben' %><br>
+  <% if @device.present? %>
+    <strong>Gerät:</strong> <%= @device %><br>
+  <% end %>
+</p>
+
+<p>
+  <strong>Rückmeldung:</strong><br>
+  <%= simple_format(h(@message)) %>
+</p>
+
+<p>
+  <a href="<%= @game.url %>">Spiel öffnen</a>
+</p>
