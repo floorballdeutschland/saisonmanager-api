@@ -13,6 +13,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Overlay-Zugang gilt schon 7 Tage vor dem Spieltag**: Der Overlay-Link eines Spieltags berechtigt jetzt ab 00:00 Uhr deutscher Zeit sieben Tage vor dem Spieltag statt drei Tage vorher, damit Vereine ihre OBS-Szenen in der Woche davor einrichten und testen können. Das Ende bleibt das Ende des Folgetags, die Mindestdauer von 36 Stunden ab Ausgabe bleibt als Untergrenze. Der Sekretariatslink beginnt weiter drei Tage vorher, weil er Lizenzlisten und Spielbericht öffnet. Das Overlay-Token liest vor dem Spieltag nur Daten, die ohnehin öffentlich sind. Bereits erzeugte Overlay-Links behalten ihren Beginn, bis sie neu erzeugt werden oder der Spieltag verschoben wird.
 
+### Behoben
+
+- **„Heute live“: Klick auf das Spiel führte auf eine Fehlerseite**: `GET live_streams` nennt an der Liga zusätzlich `game_operation_slug`. Die Seite verlinkte bisher auf `/spiel/:id`, eine Route, die es nicht gibt; die Spielseite liegt unter `/:verband/:ligaId/spiel/:id`.
+
 ## [2.3.0] - 2026-10-23
 
 ### Neu
