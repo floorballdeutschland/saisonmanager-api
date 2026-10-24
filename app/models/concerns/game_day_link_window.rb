@@ -11,6 +11,8 @@
 # dem Druck ein Schlüssel zu Lizenzlisten und Spielbericht und läge tagelang
 # herum. 72 Stunden reichen, um den Zettel vor dem Spieltag einmal
 # auszuprobieren, und sind nicht länger als bisher ein Sekretariatslink galt.
+# Ein Link mit weniger Gewicht kann früher beginnen (`lead_time`), siehe
+# GameDayOverlayLink.
 #
 # Die Mindestdauer ab Ausgabe (`minimum_validity`) bleibt als Untergrenze: Wer
 # den Zugang erst nach dem Spieltag erzeugt, um einen Bericht nachzutragen,
@@ -36,6 +38,11 @@ module GameDayLinkWindow
   end
 
   class_methods do
+    # Wie lange vor dem Spieltag das Fenster beginnt.
+    def lead_time
+      LEAD_TIME
+    end
+
     # Nur ein Link, der JETZT gilt. Alle Wege, die ein Token als Berechtigung
     # annehmen, gehen hierüber; ein noch nicht begonnener Link berechtigt zu
     # nichts.
@@ -64,7 +71,7 @@ module GameDayLinkWindow
       first = ZONE.local(dates.min.year, dates.min.month, dates.min.day)
       last = ZONE.local(dates.max.year, dates.max.month, dates.max.day)
 
-      [first - LEAD_TIME, [last.next_day.end_of_day, floor].max]
+      [first - lead_time, [last.next_day.end_of_day, floor].max]
     end
 
     # Nur das Format, das GameDay::DATE_FORMAT verlangt. Ein Altbestand in
