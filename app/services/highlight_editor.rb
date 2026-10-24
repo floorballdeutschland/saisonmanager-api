@@ -202,11 +202,22 @@ class HighlightEditor
     uuids = eintraege.map { |e| e[:client_uuid].to_s }
     raise Invalid, 'Ein Schuss steht doppelt in assignments.' if uuids.uniq.size != uuids.size
 
-    ziele = eintraege.filter_map { |e| e[:event_id] }.map(&:to_i)
+    eintraege = eintraege.map { |e| e.merge(event_id: tor_kennung(e[:event_id])) }
+    ziele = eintraege.filter_map { |e| e[:event_id] }
     raise Invalid, 'Ein Tor kann nur einen Schuss bekommen.' if ziele.uniq.size != ziele.size
 
     shots = game.game_shots.shots.where(result: 'goal', client_uuid: uuids).index_by(&:client_uuid)
     eintraege.map { |eintrag| zuordnung_eintrag(eintrag, shots[eintrag[:client_uuid].to_s]) }
+  end
+
+  # nil oder eine ganze Zahl (auch als Text). Alles andere (false, Liste,
+  # Objekt, 1.5) ist ein Fehler des Aufrufers und darf nicht als 500 enden.
+  def tor_kennung(wert)
+    return nil if wert.nil?
+    return wert if wert.is_a?(Integer)
+    return wert.to_i if wert.is_a?(String) && wert.match?(/\A\d+\z/)
+
+    raise Invalid, 'event_id muss eine ganze Zahl oder null sein.'
   end
 
   def zuordnung_eintrag(eintrag, shot)
@@ -221,7 +232,7 @@ class HighlightEditor
       return [shot, nil, ergebnis]
     end
 
-    tor = tore.find { |event| event[:event_id].to_i == eintrag[:event_id].to_i }
+    tor = tore.find { |event| event[:event_id].to_i == eintrag[:event_id] }
     raise Invalid, 'Tor nicht gefunden.' if tor.nil?
     raise Invalid, 'Schuss und Tor gehören zu verschiedenen Teams.' if tor[:event_team].to_s != shot.team
 

@@ -258,6 +258,10 @@ class HighlightEditorControllerTest < ActionDispatch::IntegrationTest
       [{ client_uuid: 's3', event_id: nil, result: 'goal' }],
       [{ client_uuid: 'f1', event_id: 1 }],                                        # Freischlag
       [{ client_uuid: 'm1', event_id: 1 }],                                        # Marke
+      [{ client_uuid: 's3', event_id: false }],                                    # keine Zahl
+      [{ client_uuid: 's3', event_id: { id: 1 } }],
+      [{ client_uuid: 's3', event_id: [1] }],
+      [{ client_uuid: 's3', event_id: 1.5 }],
       ['s3']
     ]
     falsch.each do |zuordnung|
