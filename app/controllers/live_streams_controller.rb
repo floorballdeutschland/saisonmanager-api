@@ -147,7 +147,7 @@ class LiveStreamsController < ApplicationController
     Game.joins(:game_day)
         .includes({ home_team: League::TEAM_WITH_LOGO_PRELOAD },
                   { guest_team: League::TEAM_WITH_LOGO_PRELOAD },
-                  { game_day: %i[league arena club] })
+                  { game_day: [{ league: :game_operation }, :arena, :club] })
         .where(game_days: { date: window_dates(date) })
         # BTRIM, weil `<> ''` auch ein Feld mit reinen Leerzeichen durchlässt. Das
         # `.presence` im Eintrag macht daraus danach nil, übrig blieb ein Eintrag
@@ -171,7 +171,11 @@ class LiveStreamsController < ApplicationController
       started: game.started,
       ended: game.ended,
       current_period_title: game.current_period_title,
-      league: league && { id: league.id, name: league.name, short_name: league.short_name },
+      # `game_operation_slug` und `id` bilden zusammen mit der Spiel-ID den Link
+      # zur Spielseite (/:association/:leagueId/spiel/:matchId). Eine Route
+      # /spiel/:matchId ohne Verband gibt es im Frontend nicht.
+      league: league && { id: league.id, name: league.name, short_name: league.short_name,
+                          game_operation_slug: league.game_operation&.slug },
       arena_name: gd.arena&.name,
       hosting_club: gd.hosting_club,
       home_team_id: game.home_team_id,
