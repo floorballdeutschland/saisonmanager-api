@@ -56,6 +56,17 @@ class LiveStreamsControllerTest < ActionDispatch::IntegrationTest
     assert_equal '1. Bundesliga Herren', eintrag['league']['name']
   end
 
+  # Ohne Verbands-Slug kann die Seite nicht auf das Spiel verlinken: Die
+  # Spielseite liegt unter /:association/:leagueId/spiel/:matchId.
+  test 'die Liga nennt den Verbands-Slug fuer den Link zur Spielseite' do
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    eintrag = JSON.parse(response.body)['games'].find { |g| g['game_id'] == @laufend.id }
+    assert_equal @league.id, eintrag['league']['id']
+    assert_equal @go.slug, eintrag['league']['game_operation_slug']
+    assert @go.slug.present?
+  end
+
   test 'Spiele ohne Stream-Link und ohne Aufzeichnung bleiben draussen' do
     ohne = create(:game, game_day: @game_day, home_team: @home, guest_team: @guest, start_time: '20:00')
 

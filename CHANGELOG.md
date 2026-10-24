@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **„Heute live“: Klick auf das Spiel führte auf eine Fehlerseite**: `GET live_streams` nennt an der Liga zusätzlich `game_operation_slug`. Die Seite verlinkte bisher auf `/spiel/:id`, eine Route, die es nicht gibt; die Spielseite liegt unter `/:verband/:ligaId/spiel/:id`.
+
 ## [2.3.0] - 2026-10-23
 
 ### Neu
