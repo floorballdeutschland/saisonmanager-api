@@ -2,7 +2,14 @@
 
 <p>
   Die Aufzeichnung des Spiels <%= @game.game_number %> · <%= @game.home_team_name %> – <%= @game.guest_team_name %>
-  ist fertig. Du hast beim Beenden des Tabletmodus darum gebeten, die Highlights danach selbst zu bearbeiten.
+  ist fertig.
+  <% if @fallback %>
+    Beim Beenden des Tabletmodus hat niemand den Link zum Bearbeiten der Highlights angefordert. Du bekommst ihn,
+    weil die Szenen am Tablet mit deinem Konto erfasst wurden, entweder direkt oder über einen
+    Spielsekretariats-Link, den du ausgestellt hast.
+  <% else %>
+    Du hast beim Beenden des Tabletmodus darum gebeten, die Highlights danach selbst zu bearbeiten.
+  <% end %>
 </p>
 
 <p>Über den Link kannst du</p>
@@ -17,6 +24,11 @@
 
 <p>
   Der Link gilt bis <%= @expires_at.in_time_zone('Europe/Berlin').strftime('%d.%m.%Y %H:%M') %> Uhr.
-  Gib ihn bitte nicht weiter: Wer ihn hat, kann die Auswahl ändern.
+  <% if @fallback %>
+    Gib ihn bitte nicht weiter, außer an die Person, die über deinen Spielsekretariats-Link am Tablet saß:
+    Wer ihn hat, kann die Auswahl ändern.
+  <% else %>
+    Gib ihn bitte nicht weiter: Wer ihn hat, kann die Auswahl ändern.
+  <% end %>
   Die SBK kann die Auswahl auch danach noch korrigieren.
 </p>

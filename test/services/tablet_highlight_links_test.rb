@@ -88,7 +88,7 @@ class TabletHighlightLinksTest < ActiveSupport::TestCase
   test 'Fehler nach der Annahme: der nächste Lauf schickt DENSELBEN Link' do
     @broadcast.update!(vod_duration_seconds: 7200)
     erster_token = nil
-    TabletHighlightMailer.stub(:calibration_link, lambda { |_game, _to, token, _expires|
+    TabletHighlightMailer.stub(:calibration_link, lambda { |_game, _to, token, _expires, **|
       erster_token = token
       raise Net::ReadTimeout
     }) do
