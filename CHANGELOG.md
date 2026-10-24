@@ -9,6 +9,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-24
+
+### Neu
+
+- **Highlight-Editor: Tor-Schüsse den Toren neu zuordnen**: Ohne Spielzeit an den Tablet-Schüssen ordnet die API sie den Toren des Berichts nach der Reihenfolge zu, und ein einziger als Tor getippter Fehlschuss verschiebt alle späteren Tore um eins (Spiel 58763: die Szene „2:6“ zeigte eine Großchance, „2:7“ das 2:6, das echte 2:7 fehlte). Der Editor (`GET/PUT highlight_editor?token=…` und `games/:id/highlight_editor`) liefert jetzt `goals` (alle Tore des Berichts mit Beschriftung), an jeder Szene die `event_id` und Tor-Schüsse ohne Tor als Szene `kind: 'unlinked'` (nur im Editor, öffentlich nie). Mit `assignments: [{ client_uuid, event_id }]` hängt man einen Tor-Schuss an ein Tor, mit `event_id: null` und `result` (`saved`/`missed`/`blocked`) wird er zum Fehlschuss. Mehrere Zuordnungen gehen in einem Schritt, auch Tausche; ein Schuss, der an einem Ziel-Tor hing, bleibt als Tor-Schuss ohne Tor stehen. Jedes Tor nur einmal, nur an die eigene Mannschaft, keine Freischläge oder Marken, alles oder nichts. Öffentliche Highlights und Sprungmarken folgen sofort.
+- **Highlight-Link geht ersatzweise an das Tablet-Konto** (fe#560): Hat beim Beenden des Tabletmodus niemand den Link zum Kalibrieren und Auswählen der Highlights angefordert, bekommt ihn jetzt das Konto, mit dem am Tablet erfasst wurde (`game_shots.created_by`: das angemeldete Konto oder beim Spielsekretariats-Link das Konto, das den Link ausgestellt hat). Nur nicht archivierte Konten mit Adresse, die mit den meisten Einträgen zuerst, höchstens fünf. Der Wächter legt die Anfragen an, sobald die öffentliche Aufzeichnung fertig ist, sofern das Spiel im Tabletmodus erfasst, noch nicht kalibriert und für kein Konto und keine Adresse angefordert ist. Das geschieht je Übertragung höchstens einmal (`stream_broadcasts.highlight_fallback_at`), auch wenn kein Tablet-Konto eine Adresse hat; dann steht ein Hinweis in den Notizen des Wächters, und kalibrieren können nur Admin und SBK. Nur Aufzeichnungen der letzten 14 Tage kommen in Frage. Die Mail sagt, warum sie kommt (`tablet_highlight_requests.fallback`).
+
+### Verbessert
+
+- **Overlay-Zugang gilt schon 7 Tage vor dem Spieltag**: Der Overlay-Link eines Spieltags berechtigt jetzt ab 00:00 Uhr deutscher Zeit sieben Tage vor dem Spieltag statt drei Tage vorher, damit Vereine ihre OBS-Szenen in der Woche davor einrichten und testen können. Das Ende bleibt das Ende des Folgetags, die Mindestdauer von 36 Stunden ab Ausgabe bleibt als Untergrenze. Der Sekretariatslink beginnt weiter drei Tage vorher, weil er Lizenzlisten und Spielbericht öffnet. Das Overlay-Token liest vor dem Spieltag nur Daten, die ohnehin öffentlich sind. Bereits erzeugte Overlay-Links behalten ihren Beginn, bis sie neu erzeugt werden oder der Spieltag verschoben wird.
+
+### Behoben
+
+- **„Heute live“: Klick auf das Spiel führte auf eine Fehlerseite**: `GET live_streams` nennt an der Liga zusätzlich `game_operation_slug`. Die Seite verlinkte bisher auf `/spiel/:id`, eine Route, die es nicht gibt; die Spielseite liegt unter `/:verband/:ligaId/spiel/:id`.
+- **Spieltag mit Overlay-Zugang ließ sich nicht löschen**: Ein spielfreier Spieltag, für den einmal ein Livestream-Overlay-Zugang erzeugt wurde, brach beim Löschen mit einem Server-Fehler ab. Der Zugang wird jetzt mit dem Spieltag gelöscht.
+
 ## [2.3.0] - 2026-10-23
 
 ### Neu

@@ -2,7 +2,9 @@
 
 # "Link zum Kalibrieren schicken" (fe#560): gestellt beim Beenden des
 # Tabletmodus, verschickt vom Wächter (TabletHighlightLinks), sobald die
-# Aufzeichnung fertig verarbeitet und veröffentlicht ist.
+# Aufzeichnung fertig verarbeitet und veröffentlicht ist. Hat niemand einen
+# angefordert, legt der Wächter ersatzweise Anfragen für die Konten an, mit
+# denen am Tablet erfasst wurde (`fallback`, siehe TabletHighlightLinks).
 #
 # DATENSPARSAM: Angemeldete Personen bekommen die Mail an ihre Kontoadresse,
 # gespeichert wird nur `user_id`. Eine eingegebene Adresse (Sekretariats-Link)
