@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Highlight-Link geht ersatzweise an den Ausrichter** (fe#560): Hat beim Beenden des Tabletmodus niemand den Link zum Kalibrieren und Auswählen der Highlights angefordert, bekommen ihn jetzt die Vereinsmanager des ausrichtenden Vereins (Ausrichter des Spieltags, ohne die von der Vereinspost abgewählten, nur Konten mit Adresse, höchstens fünf). Der Wächter legt die Anfragen an, sobald die öffentliche Aufzeichnung fertig ist, sofern das Spiel im Tabletmodus erfasst, noch nicht kalibriert und für kein anderes Konto und keine Adresse angefordert ist. Das geschieht je Übertragung höchstens einmal (`stream_broadcasts.highlight_fallback_at`), auch wenn der Ausrichter keinen Vereinsmanager hat; dann steht ein Hinweis in den Notizen des Wächters. Nur Aufzeichnungen der letzten 14 Tage kommen in Frage. Die Mail sagt, warum sie an den Verein geht (`tablet_highlight_requests.host_fallback`).
+
 ## [2.3.0] - 2026-10-23
 
 ### Neu

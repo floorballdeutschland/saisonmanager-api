@@ -2,7 +2,13 @@
 
 <p>
   Die Aufzeichnung des Spiels <%= @game.game_number %> · <%= @game.home_team_name %> – <%= @game.guest_team_name %>
-  ist fertig. Du hast beim Beenden des Tabletmodus darum gebeten, die Highlights danach selbst zu bearbeiten.
+  ist fertig.
+  <% if @host_fallback %>
+    Beim Beenden des Tabletmodus hat niemand den Link angefordert. Du bekommst ihn deshalb als Vereinsmanager*in
+    des ausrichtenden Vereins.
+  <% else %>
+    Du hast beim Beenden des Tabletmodus darum gebeten, die Highlights danach selbst zu bearbeiten.
+  <% end %>
 </p>
 
 <p>Über den Link kannst du</p>
@@ -17,6 +23,10 @@
 
 <p>
   Der Link gilt bis <%= @expires_at.in_time_zone('Europe/Berlin').strftime('%d.%m.%Y %H:%M') %> Uhr.
-  Gib ihn bitte nicht weiter: Wer ihn hat, kann die Auswahl ändern.
+  <% if @host_fallback %>
+    Gib ihn nur an die Person im Verein weiter, die die Highlights bearbeiten soll: Wer ihn hat, kann die Auswahl ändern.
+  <% else %>
+    Gib ihn bitte nicht weiter: Wer ihn hat, kann die Auswahl ändern.
+  <% end %>
   Die SBK kann die Auswahl auch danach noch korrigieren.
 </p>
