@@ -1,8 +1,9 @@
 require 'test_helper'
 
 # Gültigkeitsfenster der Zugangslinks (GameDayLinkWindow): 72 Stunden vor dem
-# Spieltag bis Ende des Folgetags, deutscher Kalender. Anlass Feedback #70: Ein
-# vorab ausgedruckter Zugang war am Spieltag schon abgelaufen.
+# Spieltag bis Ende des Folgetags, deutscher Kalender, beim Overlay-Zugang ab
+# 7 Tagen vorher. Anlass Feedback #70: Ein vorab ausgedruckter Zugang war am
+# Spieltag schon abgelaufen.
 class GameDayLinkWindowTest < ActiveSupport::TestCase
   setup do
     @user = create(:user, :admin)
@@ -89,12 +90,27 @@ class GameDayLinkWindowTest < ActiveSupport::TestCase
     assert_equal link, GameDayOverlayLink.find_by_token(raw_token)
   end
 
-  test 'der Overlay-Zugang hat dasselbe Fenster' do
+  # OBS-Szenen richtet ein Verein oft schon in der Woche davor ein.
+  test 'der Overlay-Zugang beginnt 7 Tage vor dem Spieltag und endet wie der Sekretariatslink' do
     link, raw_token = GameDayOverlayLink.generate!(game_day: @game_day, created_by: @user)
 
-    assert_equal Time.utc(2026, 3, 16, 23, 0), link.valid_from
+    # 20.03. 00:00 MEZ minus 7 Tage = 13.03. 00:00 MEZ = 12.03. 23:00 UTC
+    assert_equal Time.utc(2026, 3, 12, 23, 0), link.valid_from
     assert_equal Time.utc(2026, 3, 21, 22, 59, 59), link.expires_at.change(usec: 0)
     assert_nil GameDayOverlayLink.find_by_token(raw_token)
+
+    travel_to Time.utc(2026, 3, 12, 23, 1)
+    assert_equal link, GameDayOverlayLink.find_by_token(raw_token)
+  end
+
+  test 'der Overlay-Zugang beginnt auch über die Zeitumstellung um Mitternacht' do
+    after_switch = create(:game_day, date: '2026-03-30')
+
+    link, = GameDayOverlayLink.generate!(game_day: after_switch, created_by: @user)
+
+    # 23.03. 00:00 MEZ = 22.03. 23:00 UTC
+    assert_equal Time.utc(2026, 3, 22, 23, 0), link.valid_from
+    assert_includes link.not_started_message, '23.03.2026, 00:00 Uhr'
   end
 
   test 'wird der Spieltag verschoben, ziehen die laufenden Links mit' do
@@ -103,10 +119,11 @@ class GameDayLinkWindowTest < ActiveSupport::TestCase
 
     @game_day.update!(date: '2026-03-27')
 
-    # 27.03. 00:00 MEZ minus 72 h = 23.03. 23:00 UTC; Ende 28.03. MEZ
-    [secretary, overlay].each do |link|
+    # 27.03. 00:00 MEZ minus 72 h = 23.03. 23:00 UTC, minus 7 Tage = 19.03.
+    # 23:00 UTC; Ende jeweils 28.03. MEZ
+    { secretary => Time.utc(2026, 3, 23, 23, 0), overlay => Time.utc(2026, 3, 19, 23, 0) }.each do |link, start|
       link.reload
-      assert_equal Time.utc(2026, 3, 23, 23, 0), link.valid_from
+      assert_equal start, link.valid_from
       assert_equal Time.utc(2026, 3, 28, 22, 59, 59), link.expires_at.change(usec: 0)
     end
   end

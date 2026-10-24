@@ -7,6 +7,9 @@ class GameDay < ApplicationRecord
   # Spieltag mehr abdeckt, erlaubt nichts und läuft ohnehin bald ab.
   has_many :game_day_secretary_link_game_days, dependent: :destroy
   has_many :game_day_secretary_links, through: :game_day_secretary_link_game_days
+  # Ohne diese Zeile scheiterte das Löschen eines spielfreien Spieltags mit
+  # Overlay-Zugang am Fremdschlüssel (500 statt Löschung, Spieltag 20264).
+  has_one :game_day_overlay_link, dependent: :destroy
   belongs_to :league
   # arena/club sind bewusst optional: Der Spielplan-Import erlaubt lückenhafte
   # Vorlagen (Halle/Ausrichter noch offen -> nil). DB-Spalten sind nullable und
