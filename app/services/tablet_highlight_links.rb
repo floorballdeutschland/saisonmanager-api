@@ -21,15 +21,19 @@
 # Lauf schickt denselben Link (der Rohtoken ist wiederholbar). Nach
 # MAX_SEND_ATTEMPTS Fehlversuchen wird die Anfrage verworfen und gemeldet.
 #
-# ERSATZWEG ÜBER DEN AUSRICHTER: Hat beim Beenden des Tabletmodus niemand einen
-# Link angefordert, käme sonst nie jemand außer Admin und SBK zum Kalibrieren.
-# Deshalb legt der Lauf vor dem Versand für jedes Tablet-Spiel, dessen
-# öffentliche Aufzeichnung fertig ist (wie oben), das noch nicht kalibriert ist
-# und für das es keine einzige Anfrage gibt (offen oder verschickt), Anfragen
-# für die Vereinsmanager des Ausrichters an (`game_days.club_id`, siehe
-# GameDay#hosting_team; Club#notify_managers, also ohne die von der Vereinspost
-# abgewählten, nur mit Kontoadresse, höchstens MAX_PENDING_PER_GAME). Sie gehen
-# im selben Lauf über den normalen Weg raus, mit eigenem Mailtext.
+# ERSATZWEG ÜBER DAS TABLET-KONTO: Hat beim Beenden des Tabletmodus niemand
+# einen Link angefordert, käme sonst nie jemand außer Admin und SBK zum
+# Kalibrieren. Deshalb legt der Lauf vor dem Versand für jedes Tablet-Spiel,
+# dessen öffentliche Aufzeichnung fertig ist (wie oben), das noch nicht
+# kalibriert ist und für das es keine einzige Anfrage gibt (offen oder
+# verschickt), Anfragen für die Konten an, mit denen am Tablet erfasst wurde:
+# `game_shots.created_by`, also das angemeldete Konto oder beim
+# Spielsekretariats-Link das Konto, das den Link ausgestellt hat
+# (GameShotsController, `secretary_or_current_user_id`). Nur nicht archivierte
+# Konten mit Adresse, die mit den meisten Einträgen zuerst, höchstens
+# MAX_PENDING_PER_GAME. Sie gehen im selben Lauf über den normalen Weg raus,
+# mit eigenem Mailtext. Wer den Link bekommt, kann damit auch Szenen ändern;
+# das ist gewollt, er hat sie ja erfasst.
 #
 # Der Ersatzweg greift je Übertragung HÖCHSTENS EINMAL: `highlight_fallback_at`
 # wird gesetzt, sobald er geprüft ist, auch wenn es niemanden zum Anschreiben
@@ -51,7 +55,7 @@ class TabletHighlightLinks
 
   def run
     aufraeumen
-    ersatz_an_ausrichter
+    ersatz_an_tablet_konten
     TabletHighlightRequest.pending.includes(:game, :user).order(:created_at).each do |anfrage|
       verschicke(anfrage)
     rescue StandardError => e
@@ -82,7 +86,7 @@ class TabletHighlightLinks
       next false if token.nil?
 
       TabletHighlightMailer.calibration_link(anfrage.game, empfaenger, token, anfrage.expires_at,
-                                             host_fallback: anfrage.host_fallback).deliver_now
+                                             fallback: anfrage.fallback).deliver_now
       true
     end
     return unless verschickt
@@ -127,7 +131,7 @@ class TabletHighlightLinks
     @fertig[game.id] = (broadcast if broadcast.present? && StreamTimeline.new(game, broadcast).ready?)
   end
 
-  def ersatz_an_ausrichter
+  def ersatz_an_tablet_konten
     ersatz_kandidaten.each do |game|
       ersatz_fuer(game)
     rescue StandardError => e
@@ -147,7 +151,7 @@ class TabletHighlightLinks
                               .distinct.pluck(:game_id)
     return [] if game_ids.empty?
 
-    Game.where(id: game_ids).where.not(tablet_capture_at: nil).includes(game_day: :club).order(:id).to_a
+    Game.where(id: game_ids).where.not(tablet_capture_at: nil).order(:id).to_a
   end
 
   def ersatz_fuer(game)
@@ -155,10 +159,10 @@ class TabletHighlightLinks
     return if broadcast.nil? || broadcast.calibrated_at.present? || broadcast.highlight_fallback_at.present?
     return if broadcast.actual_start_at < @now - TabletHighlightRequest::PENDING_MAX_AGE
 
-    empfaenger = ausrichter_empfaenger(game)
+    empfaenger = tablet_empfaenger(game)
     if @dry_run
-      @notes << "Highlight-Link für Spiel #{game.id} ginge ersatzweise an #{empfaenger.size} " \
-                'Vereinsmanager des Ausrichters.'
+      @notes << "Highlight-Link für Spiel #{game.id} ginge ersatzweise an die Tablet-Konten " \
+                "(#{empfaenger.size})."
       return
     end
 
@@ -168,20 +172,24 @@ class TabletHighlightLinks
       next false if StreamBroadcast.where(id: broadcast.id, highlight_fallback_at: nil)
                                    .update_all(highlight_fallback_at: @now, updated_at: @now) != 1
 
-      empfaenger.each { |user| TabletHighlightRequest.create!(game: game, user: user, host_fallback: true) }
+      empfaenger.each { |user| TabletHighlightRequest.create!(game: game, user: user, fallback: true) }
       true
     end
     return unless angelegt && empfaenger.empty?
 
-    @notes << "Highlight-Link für Spiel #{game.id}: niemand angefordert, und der Ausrichter hat keinen " \
-              'Vereinsmanager mit Adresse. Kalibrieren nur über Admin oder SBK.'
+    @notes << "Highlight-Link für Spiel #{game.id}: niemand angefordert, und kein Tablet-Konto mit Adresse. " \
+              'Kalibrieren nur über Admin oder SBK.'
   end
 
-  def ausrichter_empfaenger(game)
-    club = game.game_day&.club
-    return [] if club.nil?
+  # Die Konten, mit denen am Tablet erfasst wurde, die mit den meisten
+  # Einträgen zuerst (bei Gleichstand die kleinere id).
+  def tablet_empfaenger(game)
+    eintraege = GameShot.where(game_id: game.id).where.not(created_by: nil).group(:created_by).count
+    return [] if eintraege.empty?
 
-    club.notify_managers.select { |user| user.email.present? }.sort_by(&:id)
+    User.not_archived.where(id: eintraege.keys).to_a
+        .select { |user| user.email.present? }
+        .sort_by { |user| [-eintraege[user.id], user.id] }
         .first(TabletHighlightRequest::MAX_PENDING_PER_GAME)
   end
 

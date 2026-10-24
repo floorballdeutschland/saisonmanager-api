@@ -1,8 +1,8 @@
 require 'test_helper'
 
 # Ersatzweg für den Highlight-Link (fe#560): Hat am Tablet niemand einen Link
-# angefordert, bekommen ihn die Vereinsmanager des Ausrichters, je Übertragung
-# höchstens einmal.
+# angefordert, bekommt ihn das Konto, mit dem am Tablet erfasst wurde
+# (`game_shots.created_by`), je Übertragung höchstens einmal.
 class TabletHighlightLinksFallbackTest < ActiveSupport::TestCase
   setup do
     create(:setting)
@@ -14,56 +14,116 @@ class TabletHighlightLinksFallbackTest < ActiveSupport::TestCase
                           live_stream_link: 'https://www.youtube.com/watch?v=vid-1')
     @broadcast = StreamBroadcast.create!(broadcast_id: 'vid-1', game: @game, actual_start_at: @start,
                                          vod_duration_seconds: 7200)
-    GameShot.create!(game: @game, client_uuid: 'm1', kind: 'mark', period: 1, tapped_at: @start + 20.minutes)
-    @vm = vm('vm@ausrichter.de')
+    @erfasser = create(:user, email: 'tablet@verein.de')
+    szenen(@erfasser)
+    # Der Vereinsmanager des Ausrichters bekommt nichts, er hat nicht erfasst.
+    create(:user, :vm, club_id: @ausrichter.id, email: 'vm@ausrichter.de')
     ActionMailer::Base.deliveries.clear
   end
 
-  def vm(email, club: @ausrichter)
-    create(:user, :vm, club_id: club.id, email: email)
+  def szenen(user, anzahl = 1, game: @game)
+    @szene_nr ||= 0
+    anzahl.times do
+      @szene_nr += 1
+      GameShot.create!(game: game, client_uuid: "m#{@szene_nr}", kind: 'mark', period: 1,
+                       tapped_at: @start + @szene_nr.minutes, created_by: user&.id)
+    end
   end
 
   def lauf(now: @now, dry_run: false)
     TabletHighlightLinks.new(now: now, dry_run: dry_run).run
   end
 
+  def empfaenger
+    ActionMailer::Base.deliveries.flat_map(&:to)
+  end
+
   def mailtext(mail)
     mail.html_part ? mail.html_part.body.to_s : mail.body.to_s
   end
 
-  test 'ohne Anfrage geht der Link an die Vereinsmanager des Ausrichters' do
-    zweiter = vm('zwei@ausrichter.de')
-    vm('fremd@anderer.de', club: create(:club))
-
+  test 'ohne Anfrage geht der Link an das Konto, das am Tablet angemeldet erfasst hat' do
     ergebnis = lauf
 
-    assert_equal [@game.id, @game.id], ergebnis.sent
-    assert_equal %w[vm@ausrichter.de zwei@ausrichter.de], ActionMailer::Base.deliveries.flat_map(&:to).sort
-    anfragen = TabletHighlightRequest.where(game: @game)
-    assert_equal [@vm.id, zweiter.id].sort, anfragen.pluck(:user_id).sort
-    assert(anfragen.all?(&:host_fallback))
-    assert(anfragen.all? { |anfrage| anfrage.email.nil? }, 'keine Adresse gespeichert, nur das Konto')
+    assert_equal [@game.id], ergebnis.sent
+    assert_equal ['tablet@verein.de'], empfaenger
+    anfrage = TabletHighlightRequest.find_by!(game: @game)
+    assert_equal @erfasser.id, anfrage.user_id
+    assert anfrage.fallback
+    assert_nil anfrage.email, 'keine Adresse gespeichert, nur das Konto'
     assert_equal @now.to_i, @broadcast.reload.highlight_fallback_at.to_i
-    assert_match(/ausrichtenden Vereins/, mailtext(ActionMailer::Base.deliveries.first))
+
+    text = mailtext(ActionMailer::Base.deliveries.first)
+    assert_match(/hat niemand den Link zum Bearbeiten der Highlights angefordert/, text)
+    assert_match(/mit deinem Konto erfasst/, text)
+    assert_match(/außer an die Person, die über deinen Spielsekretariats-Link am Tablet saß/, text)
+    assert_no_match(/Du hast beim Beenden des Tabletmodus darum gebeten/, text)
   end
 
-  test 'von der Vereinspost abgewählte Vereinsmanager und Konten ohne Adresse bekommen nichts' do
-    abgewaehlt = vm('ab@ausrichter.de')
-    vm(nil)
-    @ausrichter.update!(notify_excluded_user_ids: [abgewaehlt.id])
+  test 'über den Spielsekretariats-Link erfasst: der Link geht an das Konto, das ihn ausgestellt hat' do
+    GameShot.where(game: @game).delete_all
+    aussteller = create(:user, :vm, club_id: @ausrichter.id, email: 'aussteller@ausrichter.de')
+    link, = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: aussteller)
+    # So trägt GameShotsController#secretary_or_current_user_id ohne Sitzung ein.
+    szenen(User.find(link.created_by_id), 3)
 
     lauf
 
-    assert_equal ['vm@ausrichter.de'], ActionMailer::Base.deliveries.flat_map(&:to)
+    assert_equal ['aussteller@ausrichter.de'], empfaenger
+    assert_equal [aussteller.id], TabletHighlightRequest.where(game: @game).pluck(:user_id)
   end
 
-  test 'höchstens MAX_PENDING_PER_GAME Empfänger' do
-    6.times { |i| vm("vm#{i}@ausrichter.de") }
+  test 'mehrere Tablet-Konten: das mit den meisten Einträgen zuerst, bei Gleichstand die kleinere id' do
+    viel = create(:user, email: 'viel@verein.de')
+    gleich = create(:user, email: 'gleich@verein.de')
+    szenen(viel, 3)
+    szenen(gleich, 1)
+    szenen(nil, 5) # ohne Konto erfasst, zählt für niemanden
 
     lauf
 
-    assert_equal TabletHighlightRequest::MAX_PENDING_PER_GAME, TabletHighlightRequest.where(game: @game).count
-    assert_equal TabletHighlightRequest::MAX_PENDING_PER_GAME, ActionMailer::Base.deliveries.size
+    anfragen = TabletHighlightRequest.where(game: @game).order(:id)
+    assert_equal [viel.id, @erfasser.id, gleich.id], anfragen.pluck(:user_id)
+    assert(anfragen.all?(&:fallback))
+    assert_equal %w[gleich@verein.de tablet@verein.de viel@verein.de], empfaenger.sort
+  end
+
+  test 'Einträge in anderen Spielen zählen nicht' do
+    anderes = create(:game, game_day: @game_day)
+    szenen(create(:user, email: 'fremd@verein.de'), 4, game: anderes)
+
+    lauf
+
+    assert_equal ['tablet@verein.de'], empfaenger
+  end
+
+  test 'höchstens MAX_PENDING_PER_GAME Empfänger, die mit den meisten Einträgen' do
+    viele = Array.new(6) { |i| create(:user, email: "konto#{i}@verein.de") }
+    viele.each_with_index { |user, i| szenen(user, i + 2) }
+
+    lauf
+
+    max = TabletHighlightRequest::MAX_PENDING_PER_GAME
+    assert_equal max, ActionMailer::Base.deliveries.size
+    assert_equal viele.last(max).reverse.map(&:id),
+                 TabletHighlightRequest.where(game: @game).order(:id).pluck(:user_id)
+  end
+
+  test 'archivierte Konten und Konten ohne Adresse bekommen nichts' do
+    archiviert = create(:user, email: 'archiv@verein.de')
+    szenen(archiviert, 5)
+    archiviert.archive!(nil)
+    ohne_adresse = create(:user)
+    ohne_adresse.update_columns(email: nil)
+    szenen(ohne_adresse, 4)
+    leer = create(:user)
+    leer.update_columns(email: '')
+    szenen(leer, 3)
+
+    lauf
+
+    assert_equal ['tablet@verein.de'], empfaenger
+    assert_equal [@erfasser.id], TabletHighlightRequest.where(game: @game).pluck(:user_id)
   end
 
   test 'kein Ersatz, wenn jemand am Tablet angefordert hat' do
@@ -71,7 +131,7 @@ class TabletHighlightLinksFallbackTest < ActiveSupport::TestCase
 
     lauf
 
-    assert_equal ['kamera@verein.de'], ActionMailer::Base.deliveries.flat_map(&:to)
+    assert_equal ['kamera@verein.de'], empfaenger
     assert_nil @broadcast.reload.highlight_fallback_at
   end
 
@@ -109,7 +169,7 @@ class TabletHighlightLinksFallbackTest < ActiveSupport::TestCase
 
     @broadcast.update!(vod_duration_seconds: 7200)
     lauf(now: @now + 5.minutes)
-    assert_equal ['vm@ausrichter.de'], ActionMailer::Base.deliveries.flat_map(&:to)
+    assert_equal ['tablet@verein.de'], empfaenger
   end
 
   test 'kein Ersatz für eine nicht veröffentlichte Aufzeichnung' do
@@ -146,27 +206,28 @@ class TabletHighlightLinksFallbackTest < ActiveSupport::TestCase
     assert_equal 1, ActionMailer::Base.deliveries.size
   end
 
-  test 'ohne Vereinsmanager: vermerkt, Hinweis in den Notizen, kein neuer Versuch' do
-    @vm.destroy!
+  test 'ohne Tablet-Konto mit Adresse: vermerkt, Hinweis in den Notizen, kein neuer Versuch' do
+    @erfasser.update_columns(email: nil)
 
     ergebnis = lauf
 
     assert_empty ActionMailer::Base.deliveries
     assert_not TabletHighlightRequest.exists?
-    assert_match(/keinen Vereinsmanager/, ergebnis.notes.join)
+    assert_match(/niemand angefordert, und kein Tablet-Konto mit Adresse/, ergebnis.notes.join)
+    assert_match(/Kalibrieren nur über Admin oder SBK/, ergebnis.notes.join)
     assert_empty ergebnis.probleme
     assert_not_nil @broadcast.reload.highlight_fallback_at
 
     assert_empty lauf(now: @now + 5.minutes).notes, 'nicht alle fünf Minuten erneut'
   end
 
-  test 'ohne Ausrichter: vermerkt, kein Versand' do
-    @game_day.update_columns(club_id: nil)
+  test 'nur ohne Konto erfasst: vermerkt, kein Versand' do
+    GameShot.where(game: @game).update_all(created_by: nil)
 
     ergebnis = lauf
 
     assert_empty ActionMailer::Base.deliveries
-    assert_match(/keinen Vereinsmanager/, ergebnis.notes.join)
+    assert_match(/kein Tablet-Konto mit Adresse/, ergebnis.notes.join)
     assert_not_nil @broadcast.reload.highlight_fallback_at
   end
 
@@ -176,7 +237,7 @@ class TabletHighlightLinksFallbackTest < ActiveSupport::TestCase
     assert_empty ActionMailer::Base.deliveries
     assert_not TabletHighlightRequest.exists?
     assert_nil @broadcast.reload.highlight_fallback_at
-    assert_match(/ginge ersatzweise an 1 Vereinsmanager/, ergebnis.notes.join)
+    assert_match(/ginge ersatzweise an die Tablet-Konten \(1\)/, ergebnis.notes.join)
   end
 
   test 'angeforderter Link behält seinen Text' do
@@ -186,6 +247,7 @@ class TabletHighlightLinksFallbackTest < ActiveSupport::TestCase
 
     text = mailtext(ActionMailer::Base.deliveries.last)
     assert_match(/Du hast beim Beenden des Tabletmodus darum gebeten/, text)
-    assert_no_match(/ausrichtenden Vereins/, text)
+    assert_match(/Gib ihn bitte nicht weiter: Wer ihn hat/, text)
+    assert_no_match(/mit deinem Konto erfasst/, text)
   end
 end

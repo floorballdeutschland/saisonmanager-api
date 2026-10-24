@@ -2,16 +2,17 @@
 # (fe#560), verschickt von TabletHighlightLinks, sobald die Aufzeichnung fertig
 # ist.
 #
-# `host_fallback`: Niemand hat den Link am Tablet angefordert, er geht
-# ersatzweise an die Vereinsmanager des Ausrichters. Nur der Text sagt das.
+# `fallback`: Niemand hat den Link am Tablet angefordert, er geht ersatzweise
+# an das Konto, mit dem am Tablet erfasst wurde (direkt angemeldet oder als
+# Aussteller des Spielsekretariats-Links). Nur der Text sagt das.
 #
 # Bewusst `mail` statt `templated_mail`, wie TabletFeedbackMailer: Der Link ist
 # der ganze Inhalt, eine gepflegte Vorlage ohne ihn liesse die Mail nutzlos
 # werden.
 class TabletHighlightMailer < ApplicationMailer
-  def calibration_link(game, recipient, token, expires_at, host_fallback: false)
+  def calibration_link(game, recipient, token, expires_at, fallback: false)
     @game = game
-    @host_fallback = host_fallback
+    @fallback = fallback
     @url = "#{FrontendUrl.base}/highlights/bearbeiten?token=#{CGI.escape(token)}"
     @expires_at = expires_at
 
