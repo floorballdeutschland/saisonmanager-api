@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Highlight-Editor: Tor-Schüsse den Toren neu zuordnen**: Ohne Spielzeit an den Tablet-Schüssen ordnet die API sie den Toren des Berichts nach der Reihenfolge zu, und ein einziger als Tor getippter Fehlschuss verschiebt alle späteren Tore um eins (Spiel 58763: die Szene „2:6“ zeigte eine Großchance, „2:7“ das 2:6, das echte 2:7 fehlte). Der Editor (`GET/PUT highlight_editor?token=…` und `games/:id/highlight_editor`) liefert jetzt `goals` (alle Tore des Berichts mit Beschriftung), an jeder Szene die `event_id` und Tor-Schüsse ohne Tor als Szene `kind: 'unlinked'` (nur im Editor, öffentlich nie). Mit `assignments: [{ client_uuid, event_id }]` hängt man einen Tor-Schuss an ein Tor, mit `event_id: null` und `result` (`saved`/`missed`/`blocked`) wird er zum Fehlschuss. Mehrere Zuordnungen gehen in einem Schritt, auch Tausche; ein Schuss, der an einem Ziel-Tor hing, bleibt als Tor-Schuss ohne Tor stehen. Jedes Tor nur einmal, nur an die eigene Mannschaft, keine Freischläge oder Marken, alles oder nichts. Öffentliche Highlights und Sprungmarken folgen sofort.
+
 ### Verbessert
 
 - **Overlay-Zugang gilt schon 7 Tage vor dem Spieltag**: Der Overlay-Link eines Spieltags berechtigt jetzt ab 00:00 Uhr deutscher Zeit sieben Tage vor dem Spieltag statt drei Tage vorher, damit Vereine ihre OBS-Szenen in der Woche davor einrichten und testen können. Das Ende bleibt das Ende des Folgetags, die Mindestdauer von 36 Stunden ab Ausgabe bleibt als Untergrenze. Der Sekretariatslink beginnt weiter drei Tage vorher, weil er Lizenzlisten und Spielbericht öffnet. Das Overlay-Token liest vor dem Spieltag nur Daten, die ohnehin öffentlich sind. Bereits erzeugte Overlay-Links behalten ihren Beginn, bis sie neu erzeugt werden oder der Spieltag verschoben wird.
