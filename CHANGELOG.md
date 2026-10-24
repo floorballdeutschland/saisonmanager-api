@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-24
+
 ### Neu
 
 - **Highlight-Editor: Tor-Schüsse den Toren neu zuordnen**: Ohne Spielzeit an den Tablet-Schüssen ordnet die API sie den Toren des Berichts nach der Reihenfolge zu, und ein einziger als Tor getippter Fehlschuss verschiebt alle späteren Tore um eins (Spiel 58763: die Szene „2:6“ zeigte eine Großchance, „2:7“ das 2:6, das echte 2:7 fehlte). Der Editor (`GET/PUT highlight_editor?token=…` und `games/:id/highlight_editor`) liefert jetzt `goals` (alle Tore des Berichts mit Beschriftung), an jeder Szene die `event_id` und Tor-Schüsse ohne Tor als Szene `kind: 'unlinked'` (nur im Editor, öffentlich nie). Mit `assignments: [{ client_uuid, event_id }]` hängt man einen Tor-Schuss an ein Tor, mit `event_id: null` und `result` (`saved`/`missed`/`blocked`) wird er zum Fehlschuss. Mehrere Zuordnungen gehen in einem Schritt, auch Tausche; ein Schuss, der an einem Ziel-Tor hing, bleibt als Tor-Schuss ohne Tor stehen. Jedes Tor nur einmal, nur an die eigene Mannschaft, keine Freischläge oder Marken, alles oder nichts. Öffentliche Highlights und Sprungmarken folgen sofort.
