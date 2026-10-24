@@ -16,6 +16,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Behoben
 
 - **„Heute live“: Klick auf das Spiel führte auf eine Fehlerseite**: `GET live_streams` nennt an der Liga zusätzlich `game_operation_slug`. Die Seite verlinkte bisher auf `/spiel/:id`, eine Route, die es nicht gibt; die Spielseite liegt unter `/:verband/:ligaId/spiel/:id`.
+- **Spieltag mit Overlay-Zugang ließ sich nicht löschen**: Ein spielfreier Spieltag, für den einmal ein Livestream-Overlay-Zugang erzeugt wurde, brach beim Löschen mit einem Server-Fehler ab. Der Zugang wird jetzt mit dem Spieltag gelöscht.
 
 ## [2.3.0] - 2026-10-23
 
