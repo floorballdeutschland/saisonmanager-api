@@ -199,6 +199,78 @@ class HighlightEditorControllerTest < ActionDispatch::IntegrationTest
     assert_response :unprocessable_entity
   end
 
+  # --- Tor-Zuordnung (Spiel 58763) ------------------------------------------------
+
+  test 'Editor listet die Tore und Tor-Schüsse ohne Tor, öffentlich bleiben diese draußen' do
+    zwei_tore_und_ein_fehltipper
+
+    get "/api/v2/highlight_editor.json?token=#{gesendeter_token}"
+
+    body = response.parsed_body
+    assert_equal([[1, 'home'], [2, 'home'], [3, 'guest']], body['goals'].map { |g| g.values_at('event_id', 'team') })
+    assert_equal ['1:0 Müller', '2:0 Müller'], body['goals'].first(2).pluck('label')
+    szenen = body['scenes'].index_by { |s| s['client_uuid'] }
+    assert_equal ['goal', 1], szenen['s1'].values_at('kind', 'event_id')
+    assert_equal ['unlinked', nil, 'Tor-Schuss ohne Tor im Bericht'], szenen['s3'].values_at('kind', 'event_id', 'label')
+
+    with_real_cache do
+      get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
+      assert_not_includes response.parsed_body['scenes'].map { |s| s['kind'] }, 'unlinked'
+      assert_equal 3, response.parsed_body['scenes'].size, 's1, s2 und die Marke'
+    end
+  end
+
+  test 'Zuordnung verschiebt die Tore zurück und macht den Fehltipper zum Fehlschuss' do
+    zwei_tore_und_ein_fehltipper
+    @broadcast.update_columns(chapters_checked_at: Time.current)
+
+    put "/api/v2/highlight_editor.json?token=#{gesendeter_token}",
+        params: { assignments: [{ client_uuid: 's1', event_id: nil, result: 'missed' },
+                                { client_uuid: 's2', event_id: 1 },
+                                { client_uuid: 's3', event_id: 2 }] }, as: :json
+
+    assert_response :success
+    assert_equal({ 's1' => ['missed', nil], 's2' => ['goal', 1], 's3' => ['goal', 2] },
+                 GameShot.where(client_uuid: %w[s1 s2 s3]).to_h { |s| [s.client_uuid, [s.result, s.event_id]] })
+    assert_nil @broadcast.reload.chapters_checked_at, 'Sprungmarken werden neu gerechnet'
+    assert_equal(%w[s2 s3], response.parsed_body['scenes'].select { |s| s['kind'] == 'goal' }.pluck('client_uuid'))
+  end
+
+  test 'Zuordnung an ein belegtes Tor löst den bisherigen Schuss' do
+    zwei_tore_und_ein_fehltipper
+
+    put "/api/v2/highlight_editor.json?token=#{gesendeter_token}",
+        params: { assignments: [{ client_uuid: 's3', event_id: 1 }] }, as: :json
+
+    assert_response :success
+    assert_equal [1, nil], [GameShot.find_by(client_uuid: 's3').event_id, GameShot.find_by(client_uuid: 's1').event_id]
+    assert_equal 'goal', GameShot.find_by(client_uuid: 's1').result
+  end
+
+  test 'ungültige Zuordnungen: 422 und nichts gespeichert' do
+    zwei_tore_und_ein_fehltipper
+    token = gesendeter_token
+    falsch = [
+      [{ client_uuid: 's3', event_id: 3 }],                                        # fremde Mannschaft
+      [{ client_uuid: 's3', event_id: 99 }],                                       # Tor gibt es nicht
+      [{ client_uuid: 's3', event_id: 1 }, { client_uuid: 's2', event_id: 1 }], # Tor doppelt
+      [{ client_uuid: 's3', event_id: nil }],                                      # ohne Tor kein Ergebnis
+      [{ client_uuid: 's3', event_id: nil, result: 'goal' }],
+      [{ client_uuid: 'f1', event_id: 1 }],                                        # Freischlag
+      [{ client_uuid: 'm1', event_id: 1 }],                                        # Marke
+      ['s3']
+    ]
+    falsch.each do |zuordnung|
+      put "/api/v2/highlight_editor.json?token=#{token}", params: { offset_seconds: 4, assignments: zuordnung },
+                                                          as: :json
+      assert_response :unprocessable_entity, zuordnung.inspect
+    end
+
+    assert_nil @broadcast.reload.offset_seconds
+    assert_equal({ 's1' => 1, 's2' => 2, 's3' => nil },
+                 GameShot.where(client_uuid: %w[s1 s2 s3]).to_h { |s| [s.client_uuid, s.event_id] })
+  end
+
   # --- Admin und SBK -------------------------------------------------------------
 
   test 'SBK des Spielbetriebs korrigiert ohne Link, mit Konto vermerkt' do
@@ -244,6 +316,23 @@ class HighlightEditorControllerTest < ActionDispatch::IntegrationTest
   def login_as(user)
     post '/api/v2/login', params: { username: user.user_name, password: 'password123' }, as: :json
     assert_response :success
+  end
+
+  # Wie Spiel 58763: s1 ist ein als Tor getippter Fehlschuss, an dem das erste
+  # Tor hängt; das zweite hängt an s2, das eigentlich das erste war, und s3 (das
+  # zweite) hängt an nichts. Tor 3 gehört dem Gast.
+  def zwei_tore_und_ein_fehltipper
+    tor = lambda { |id, team, zeit, heim, gast|
+      { 'id' => id, 'event_type' => 'goal', 'event_team' => team, 'period' => 1, 'time' => zeit,
+        'home_goals' => heim, 'guest_goals' => gast, "#{team}_number" => (team == 'home' ? 7 : 9),
+        'added_at' => (@start + 40.minutes).to_i }
+    }
+    @game.update_columns(events: [tor.call(1, 'home', '11:00', 1, 0), tor.call(2, 'home', '15:00', 2, 0),
+                                  tor.call(3, 'guest', '16:00', 2, 1)])
+    GameShot.create!(game: @game, client_uuid: 's2', team: 'home', period: 1, tapped_at: @start + 42.minutes,
+                     x: 0.8, y: 0.5, result: 'goal', event_id: 2)
+    GameShot.create!(game: @game, client_uuid: 's3', team: 'home', period: 1, tapped_at: @start + 46.minutes,
+                     x: 0.8, y: 0.5, result: 'goal')
   end
 
   def gesendeter_token

@@ -58,7 +58,7 @@ class HighlightEditorController < ApplicationController
     render json: HighlightEditor.new(@request.game).as_json.merge(expires_at: @request.expires_at.utc.iso8601)
   end
 
-  # PUT highlight_editor?token=…  { offset_seconds?, scenes? }
+  # PUT highlight_editor?token=…  { offset_seconds?, scenes?, assignments? }
   def update_by_token
     speichern(@request.game, user: nil) do |editor|
       editor.as_json.merge(expires_at: @request.expires_at.utc.iso8601)
@@ -86,7 +86,7 @@ class HighlightEditorController < ApplicationController
   end
 
   def editor_params
-    request.request_parameters.with_indifferent_access.slice(:offset_seconds, :scenes)
+    request.request_parameters.with_indifferent_access.slice(:offset_seconds, :scenes, :assignments)
   end
 
   def set_game
