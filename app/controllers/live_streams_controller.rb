@@ -42,7 +42,7 @@ class LiveStreamsController < ApplicationController
     # Zwischenstände, ein gewöhnlicher Schlüssel nicht. Ein gemeinsamer Cache
     # davor würde die eine Fassung an den anderen Abrufer ausliefern.
     expires_in 30.seconds
-    render json: { date: date.to_s, games: delay_live_scores(entries) }
+    render json: { date: date.to_s, games: delay_highlights(delay_live_scores(entries)) }
   end
 
   private
@@ -73,7 +73,9 @@ class LiveStreamsController < ApplicationController
   end
 
   def build_entries(date)
-    entries = games_in_window(date).map { |game| entry(game, date) }
+    games = games_in_window(date).to_a
+    kandidaten = highlight_candidates(games)
+    entries = games.map { |game| entry(game, date, kandidaten) }
 
     # Einträge, an denen nach `.presence` weder Stream noch Aufzeichnung übrig ist,
     # gehören nicht in die Liste. Der SQL-Filter lässt jeden nicht-leeren Text durch,
@@ -156,7 +158,7 @@ class LiveStreamsController < ApplicationController
                "OR COALESCE(BTRIM(games.vod_link), '') <> ''")
   end
 
-  def entry(game, date)
+  def entry(game, date, kandidaten)
     gd = game.game_day
     league = gd.league
 
@@ -197,7 +199,73 @@ class LiveStreamsController < ApplicationController
       item[:result_string] = game.result_string
     end
 
+    add_highlights(item, game, kandidaten)
     item
+  end
+
+  # HIGHLIGHTS (saisonmanager#612): `has_highlights` schaltet auf der Seite den
+  # Button „Highlights ansehen". Ob Übertragung und Tablet-Schüsse vorliegen,
+  # reicht dafür nicht; der Button führte sonst ins Leere, wenn kein Tor mit
+  # verknüpftem Schuss in eine verlinkte Aufzeichnung mit bekanntem Start
+  # fällt. Entschieden wird deshalb an GameHighlights selbst, und zwar über
+  # GameHighlights.cached: dieselbe Rechnung und derselbe Zwischenspeicher wie
+  # `games/:id/highlights`, auf das der Button führt.
+  #
+  # VERZÖGERUNG: Der Eintrag liegt 30 s für ALLE Abrufer im Cache, die
+  # Live-Verzögerung entscheidet sich erst danach je Abrufer. Für ein nicht
+  # beendetes Spiel stehen deshalb beide Fassungen im Eintrag: `has_highlights`
+  # in Echtzeit und intern `has_highlights_delayed` mit dem Cutoff von
+  # GameShotsController#highlights. delay_highlights wählt danach je Abrufer
+  # und nimmt den internen Schlüssel immer heraus. Die konservative Variante
+  # (für laufende Spiele immer mit Cutoff rechnen) wäre einfacher, ließe den
+  # Button aber gerade für die Website und angemeldete Nutzer zehn Minuten
+  # hinter den Szenen herlaufen, die ihnen die Spielseite schon zeigt. Die
+  # zweite Rechnung fällt nur für laufende Tablet-Spiele mit Kandidaten an.
+  # Weil beide Fassungen aus GameHighlights.cached kommen, sagt der Eintrag
+  # dasselbe wie die Spielseite zum Zeitpunkt des Cache-Misses. Danach kommen
+  # mit der Zeit nur Szenen hinzu; der Button erscheint also höchstens 30 s
+  # später als die Szenen, nie früher.
+  def add_highlights(item, game, kandidaten)
+    kandidat = kandidaten.include?(game.id)
+    item[:has_highlights] = kandidat && highlights?(game, delayed: false)
+    item[:has_highlights_delayed] = kandidat && highlights?(game, delayed: true) unless game.ended?
+  end
+
+  def highlights?(game, delayed:)
+    cutoff = delayed ? Time.current - LIVE_DATA_DELAY : nil
+    GameHighlights.cached(game, delayed: delayed, cutoff: cutoff)[:scenes].any?
+  end
+
+  # Vorauswahl in zwei Abfragen für alle Spiele zusammen, damit GameHighlights
+  # (je Spiel mehrere Abfragen) nur für Spiele läuft, die überhaupt eine Szene
+  # haben können: im Tabletmodus erfasst, eine Übertragung mit bekanntem Start
+  # und eine öffentliche Szene (verknüpfter Tor-Schuss oder vorgemerkte Szene
+  # mit `in_highlights`). Ein Preload von `game_shots` und `stream_broadcasts`
+  # hülfe nicht: GameHighlights und StreamTimeline fragen über eigene Scopes
+  # ab und gingen am Preload vorbei. Alle anderen Spiele sind sofort false.
+  def highlight_candidates(games)
+    ids = games.select(&:tablet_capture?).map(&:id)
+    return Set.new if ids.empty?
+
+    mit_start = StreamBroadcast.where(game_id: ids).where.not(actual_start_at: nil).distinct.pluck(:game_id)
+    return Set.new if mit_start.empty?
+
+    GameShot.where(game_id: mit_start, in_highlights: true)
+            .and(GameShot.marks.or(GameShot.shots.linked.where(result: 'goal')))
+            .distinct.pluck(:game_id).to_set
+  end
+
+  # Die zweite Hälfte der Verzögerung, siehe add_highlights. Gibt neue Hashes
+  # zurück und lässt die Einträge im Cache unverändert.
+  def delay_highlights(entries)
+    verzoegert = delay_live_data?
+
+    entries.map do |entry|
+      next entry unless entry.key?(:has_highlights_delayed)
+
+      bereinigt = entry.except(:has_highlights_delayed)
+      verzoegert ? bereinigt.merge(has_highlights: entry[:has_highlights_delayed]) : bereinigt
+    end
   end
 
   # Dieselbe Bedingung wie ApplicationController#running_entry? und
