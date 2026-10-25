@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Ausführliche Statistik: Tore ohne eigenen Torhüter nach Spielstärke** (fe#610): Die Kennung „Torwart raus“ am Tablet-Schuss (`extra_attacker`) sagt nur, dass das schießende Team ohne eigenen Torhüter spielt, die Statistik zählte das aber als „6 gegen 5“, auch wenn es in Überzahl 6 gegen 4 war (Spiel 58962). `GET games/:id/detailed_stats` leitet die Spielstärke jetzt aus den zum Schuss laufenden Strafen des Spielberichts ab, mit den Regeln der Anzeigetafel (fe#463): Unterzahl nur durch 2, 2+2 und 5 Minuten, ein Überzahltor beendet genau eine kleine Strafe, Strafen beider Teams heben sich auf. Jeder Schuss trägt `extra_attacker_strength` (`6v5`, `6v4`, `6v3`, `5v5`, `4v5` oder `null` ohne Kennung bzw. ohne Spielzeit), die Summen je Team und Abschnitt zusätzlich `goals_extra_attacker_6v5`, `_6v4`, `_6v3`, `_shorthanded` (schießendes Team selbst in Unterzahl) und `_unknown`. `goals_extra_attacker` bleibt die Summe. Am Tor hängende Schüsse nehmen Abschnitt und Zeit des Tores, sonst die Spielzeit am Schuss; mit der Abschnittslänge der Liga läuft eine Strafe in den nächsten Abschnitt hinüber.
+
 ## [2.4.0] - 2026-10-24
 
 ### Neu
