@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Highlights melden, ob sie kalibriert sind**: `GET games/:id/highlights.json` liefert jetzt `calibrated` (`true`/`false`, `null` ohne Übertragung). Solange niemand die Aufzeichnung kalibriert hat, liegen die Szenen nur ungefähr; die Spielseite zeigt dann „Kalibrierung ausstehend“.
+
 ## [2.4.0] - 2026-10-24
 
 ### Neu
