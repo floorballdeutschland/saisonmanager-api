@@ -281,7 +281,9 @@ class HighlightEditorControllerTest < ActionDispatch::IntegrationTest
       { 'id' => 4, 'event_type' => 'goal', 'event_team' => 'home', 'period' => 1, 'time' => '17:00',
         'home_goals' => 3, 'guest_goals' => 1, 'home_number' => 1000 },
       { 'id' => 5, 'event_type' => 'goal', 'event_team' => 'home', 'period' => 1, 'time' => '18:00',
-        'home_goals' => 4, 'guest_goals' => 1, 'home_number' => 7, 'goal_type' => 'technical' }
+        'home_goals' => 4, 'guest_goals' => 1, 'home_number' => 7, 'goal_type' => 'technical' },
+      { 'id' => 6, 'event_type' => 'goal', 'event_team' => 'home', 'period' => 1, 'time' => '19:00',
+        'home_goals' => 5, 'guest_goals' => 1, 'home_number' => 2000, 'goal_type' => 'technical' }
     ]
     @game.update_columns(events: events)
     token = gesendeter_token
@@ -289,7 +291,7 @@ class HighlightEditorControllerTest < ActionDispatch::IntegrationTest
     get "/api/v2/highlight_editor.json?token=#{token}"
     assert_equal [1, 2, 3], response.parsed_body['goals'].pluck('event_id')
 
-    [4, 5].each do |event_id|
+    [4, 5, 6].each do |event_id|
       put "/api/v2/highlight_editor.json?token=#{token}",
           params: { assignments: [{ client_uuid: 's3', event_id: event_id }] }, as: :json
       assert_response :unprocessable_entity

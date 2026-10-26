@@ -131,9 +131,13 @@ class HighlightEditor
     @tore ||= game.formatted_events.select { |event| event[:event_type] == :goal }
   end
 
+  def ohne_schuss
+    @ohne_schuss ||= GameShotLinker.event_ids_without_shot(game)
+  end
+
   # Ohne Eigentore und technische Tore: Ihnen lässt sich kein Schuss zuordnen.
   def goals_json
-    tore.reject { |event| GameShotLinker.without_shot?(event) }.map do |event|
+    tore.reject { |event| ohne_schuss.include?(event[:event_id].to_i) }.map do |event|
       { event_id: event[:event_id].to_i, label: StreamChapters.marken_text(game, event),
         team: event[:event_team].to_s, period: event[:period].to_i, time: event[:time].to_s }
     end
@@ -235,7 +239,7 @@ class HighlightEditor
 
     tor = tore.find { |event| event[:event_id].to_i == eintrag[:event_id] }
     raise Invalid, 'Tor nicht gefunden.' if tor.nil?
-    raise Invalid, 'Eigentore und technische Tore haben keinen Schuss.' if GameShotLinker.without_shot?(tor)
+    raise Invalid, 'Eigentore und technische Tore haben keinen Schuss.' if ohne_schuss.include?(tor[:event_id].to_i)
     raise Invalid, 'Schuss und Tor gehören zu verschiedenen Teams.' if tor[:event_team].to_s != shot.team
 
     [shot, tor[:event_id].to_i, nil]
