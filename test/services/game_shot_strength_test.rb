@@ -149,6 +149,24 @@ class GameShotStrengthTest < ActiveSupport::TestCase
     assert_equal '6v4', staerke(ereignisse, schuss('5:00', period: 2))
   end
 
+  test 'eine Strafe mit der Schlusssirene läuft in jedem Abschnitt in den nächsten hinüber' do
+    assert_equal '6v4', staerke([strafe('guest', '20:00', 'penalty_2', period: 1)], schuss('1:00', period: 2))
+    assert_equal '6v4', staerke([strafe('guest', '20:00', 'penalty_2', period: 2)], schuss('1:00', period: 3))
+    assert_equal '6v5', staerke([strafe('guest', '20:00', 'penalty_2', period: 2)], schuss('1:00', period: 2))
+  end
+
+  test 'die ausführliche Statistik wird geleert, wenn sich der Spielbericht ändert' do
+    with_real_cache do
+      key = GameShotStats.cache_key(@game, 'realtime')
+      Rails.cache.write(key, 'alt')
+      @game.update!(audience: 123)
+      assert_equal 'alt', Rails.cache.read(key), 'ohne Änderung an den Ereignissen bleibt der Eintrag'
+
+      @game.update!(events: [strafe('guest', '4:00')])
+      assert_nil Rails.cache.read(key)
+    end
+  end
+
   test 'ohne Abschnittslänge zählt nur der Abschnitt des Schusses' do
     @league.update!(period_length: nil)
     ereignisse = [strafe('guest', '19:30', 'penalty_2', period: 1)]

@@ -47,8 +47,10 @@
 # ABSCHNITTSWECHSEL: Die Zeiten im Spielbericht laufen je Abschnitt ab 0:00.
 # Ist die Abschnittslänge der Liga bekannt (`period_length`), rechnet die
 # Klasse auf eine durchgehende Spielzeit um, eine Strafe vom Ende des ersten
-# Drittels läuft dann im zweiten weiter. Zeiten ab der Abschnittslänge sind
-# schon durchgehend erfasst (kommt in Altdaten vor) und bleiben stehen. Ohne
+# Drittels läuft dann im zweiten weiter. Zeiten über der Abschnittslänge sind
+# schon durchgehend erfasst (kommt in Altdaten vor) und bleiben stehen. Genau
+# die Abschnittslänge („20:00“) ist dagegen das Ende des Abschnitts, etwa eine
+# Strafe mit der Schlusssirene, und läuft in den nächsten hinüber. Ohne
 # Abschnittslänge zählen nur Strafen aus dem Abschnitt des Schusses.
 #
 # Nicht abgebildet, wie auf der Anzeigetafel: gestapelte Strafen (die dritte
@@ -191,7 +193,7 @@ class GameShotStrength
 
     seconds = (match[1].to_i * 60) + match[2].to_i
     return ((nummer - 1) * PERIOD_GAP) + seconds if @period_seconds.nil?
-    return seconds if nummer > 1 && seconds >= @period_seconds
+    return seconds if nummer > 1 && seconds > @period_seconds
 
     ([nummer - 1, @regular_periods.to_i].min * @period_seconds) + seconds
   end
