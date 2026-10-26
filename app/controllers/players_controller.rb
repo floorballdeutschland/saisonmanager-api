@@ -201,7 +201,7 @@ class PlayersController < ApplicationController
         raise ActiveRecord::Rollback
       end
 
-      unless league.age_eligible?(player.birthdate)
+      unless league.age_eligible?(player.birthdate, player.gender)
         result = :age_ineligible
         raise ActiveRecord::Rollback
       end
@@ -267,8 +267,7 @@ class PlayersController < ApplicationController
       render json: { message: 'Der Spieler hat schon einen Lizenzantrag für dieses Team' },
              status: :unprocessable_entity
     when :age_ineligible
-      direction = league.before_deadline ? 'geboren bis' : 'geboren ab'
-      render json: { message: "Der Spieler erfüllt die Altersvoraussetzung dieser Liga nicht (spielberechtigt: #{direction} #{league.deadline.strftime('%d.%m.%Y')})." },
+      render json: { message: "Der Spieler erfüllt die Altersvoraussetzung dieser Liga nicht (spielberechtigt: #{league.age_requirement_text})." },
              status: :unprocessable_entity
     when :below_minimum_age
       render json: { message: "Der Spieler erfüllt das Mindestalter dieser Liga nicht (mindestens #{league.minimum_age} Jahre am Tag der Beantragung)." },

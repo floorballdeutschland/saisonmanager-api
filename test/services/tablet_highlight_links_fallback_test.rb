@@ -54,10 +54,10 @@ class TabletHighlightLinksFallbackTest < ActiveSupport::TestCase
     assert_equal @now.to_i, @broadcast.reload.highlight_fallback_at.to_i
 
     text = mailtext(ActionMailer::Base.deliveries.first)
-    assert_match(/hat niemand den Link zum Bearbeiten der Highlights angefordert/, text)
+    assert_match(/hat niemand den Link zum Bearbeiten angefordert/, text)
     assert_match(/mit deinem Konto erfasst/, text)
     assert_match(/außer an die Person, die über deinen Spielsekretariats-Link am Tablet saß/, text)
-    assert_no_match(/Du hast beim Beenden des Tabletmodus darum gebeten/, text)
+    assert_no_match(/wurde für diese Adresse der Link zum Bearbeiten angefordert/, text)
   end
 
   test 'über den Spielsekretariats-Link erfasst: der Link geht an das Konto, das ihn ausgestellt hat' do
@@ -246,8 +246,8 @@ class TabletHighlightLinksFallbackTest < ActiveSupport::TestCase
     lauf
 
     text = mailtext(ActionMailer::Base.deliveries.last)
-    assert_match(/Du hast beim Beenden des Tabletmodus darum gebeten/, text)
-    assert_match(/Gib ihn bitte nicht weiter: Wer ihn hat/, text)
+    assert_match(/wurde für diese Adresse der Link zum Bearbeiten angefordert/, text)
+    assert_match(/Gib ihn bitte nicht weiter, denn wer ihn hat/, text)
     assert_no_match(/mit deinem Konto erfasst/, text)
   end
 end
