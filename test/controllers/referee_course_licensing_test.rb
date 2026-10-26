@@ -94,6 +94,18 @@ class RefereeCourseLicensingTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
+  test 'Lizenzvergabe nennt den Vorschlag aus den Regeln' do
+    RefereeLicenseSuggestionRule.create!(course_type: 'g', referee_license_level: @l3)
+    ready_course
+    RefereeCourseSubmission.new(@course, submitted_by: @rsk).call
+    login(@fd)
+
+    get '/api/v2/admin/referee_course_licensing'
+
+    assert_response :success
+    assert_equal(%w[L3 L3], response.parsed_body.map { |r| r.dig('suggestion', 'lizenzstufe') })
+  end
+
   test 'FD erteilt: Bestandsschiri bekommt Lizenz und Mail, neue Person Lizenznummer und Konto' do
     ready_course
     RefereeCourseSubmission.new(@course, submitted_by: @rsk).call
