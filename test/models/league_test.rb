@@ -34,6 +34,68 @@ class LeagueTest < ActiveSupport::TestCase
   end
 
   # ---------------------------------------------------------------------------
+  # Overage-Regel fuer Spielerinnen (female_overage_years)
+  # ---------------------------------------------------------------------------
+
+  test 'age_eligible?: Overage-Regel laesst Spielerinnen ein Jahr aelter zu' do
+    l = League.new(deadline: Date.new(2014, 1, 1), before_deadline: false, female_overage_years: 1)
+
+    assert l.age_eligible?(Date.new(2013, 1, 1), 'W'), 'genau ein Jahr vor dem Stichtag'
+    assert l.age_eligible?(Date.new(2013, 6, 1), 'w'), 'Kleinschreibung im Altbestand'
+    assert_not l.age_eligible?(Date.new(2012, 12, 31), 'W'), 'mehr als ein Jahr zu alt'
+  end
+
+  test 'age_eligible?: Overage-Regel gilt nicht fuer Spieler, divers oder ohne Geschlecht' do
+    l = League.new(deadline: Date.new(2014, 1, 1), before_deadline: false, female_overage_years: 1)
+    dob = Date.new(2013, 6, 1)
+
+    assert_not l.age_eligible?(dob, 'M')
+    assert_not l.age_eligible?(dob, 'D')
+    assert_not l.age_eligible?(dob, nil)
+    assert_not l.age_eligible?(dob), 'ohne Geschlecht bleibt es beim Stichtag'
+  end
+
+  test 'age_eligible?: ohne Overage-Regel aendert das Geschlecht nichts' do
+    l = League.new(deadline: Date.new(2014, 1, 1), before_deadline: false)
+    assert_not l.age_eligible?(Date.new(2013, 6, 1), 'W')
+  end
+
+  test 'female_overage?: nur wer allein ueber die Regel spielberechtigt ist' do
+    l = League.new(deadline: Date.new(2014, 1, 1), before_deadline: false, female_overage_years: 1)
+
+    assert l.female_overage?(Date.new(2013, 6, 1), 'W')
+    assert_not l.female_overage?(Date.new(2014, 1, 1), 'W'), 'am Stichtag regulaer spielberechtigt'
+    assert_not l.female_overage?(Date.new(2012, 6, 1), 'W'), 'zu alt, auch mit Regel'
+    assert_not l.female_overage?(Date.new(2013, 6, 1), 'M')
+    assert_not l.female_overage?(nil, 'W')
+    assert_not League.new(deadline: Date.new(2014, 1, 1)).female_overage?(Date.new(2013, 6, 1), 'W')
+  end
+
+  test 'female_overage_years: nur 1 bis 9 und nur mit Stichtag geboren ab' do
+    l = build(:league, deadline: Date.new(2014, 1, 1), before_deadline: false)
+
+    l.female_overage_years = 0
+    assert_not l.valid?
+    assert_includes l.errors.attribute_names, :female_overage_years
+
+    l.female_overage_years = 10
+    assert_not l.valid?
+
+    l.female_overage_years = 1
+    assert l.valid?, l.errors.full_messages.to_sentence
+
+    l.before_deadline = true
+    assert_not l.valid?, 'bei geboren bis gibt es nichts zu lockern'
+
+    l.before_deadline = false
+    l.deadline = nil
+    assert_not l.valid?, 'ohne Stichtag gibt es nichts zu lockern'
+
+    l.female_overage_years = nil
+    assert l.valid?, l.errors.full_messages.to_sentence
+  end
+
+  # ---------------------------------------------------------------------------
   # minimum_age_met? (Mindestalter, tagesgenau)
   # ---------------------------------------------------------------------------
 

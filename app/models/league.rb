@@ -26,6 +26,11 @@ class League < ApplicationRecord
   # gespeichert, damit "keine Untergrenze" nur eine Schreibweise hat.
   validates :minimum_age, numericality: { only_integer: true, greater_than: 0, less_than: 100 },
                           allow_nil: true
+  # Overage-Regel für Spielerinnen in Jahren (siehe age_eligible?). Wie beim
+  # Mindestalter ist 0 keine Regel, sondern ein leeres Feld.
+  validates :female_overage_years, numericality: { only_integer: true, greater_than: 0, less_than: 10 },
+                                   allow_nil: true
+  validate :female_overage_needs_born_from_deadline
 
   default_scope { order(:season_id, :game_operation_id).order('order_key::int') }
   scope :current_season, -> { where(season_id: Setting.current_season_id) }
@@ -261,11 +266,47 @@ class League < ApplicationRecord
   # Erfüllt das Geburtsdatum die Altersvoraussetzung (Stichtag) der Liga?
   # before_deadline: true = "geboren bis" (<= Stichtag), false = "geboren ab" (>= Stichtag).
   # Ohne Stichtag oder bei fehlendem/unlesbarem Geburtsdatum keine Sperre.
-  def age_eligible?(birthdate)
+  #
+  # Mit female_overage_years dürfen Spielerinnen um so viele Jahre älter sein,
+  # als der Stichtag "geboren ab" sonst erlaubt (Overage-Regel, z. B. Bayern:
+  # Mädchen spielen ein Jahr über ihrer Altersklasse). Eine Höchstzahl je
+  # Mannschaft prüft die API bewusst nicht: Reine Mädchenteams dürfen ganz aus
+  # Overage-Spielerinnen bestehen, gemischte nur aus wenigen, und das
+  # unterscheidet kein Feld. Die Lizenzlisten markieren die Fälle stattdessen
+  # (female_overage?), gezählt wird vom Verband.
+  def age_eligible?(birthdate, gender = nil)
     dob = parsed_birthdate(birthdate)
     return true if deadline.blank? || dob.nil?
+    return dob <= deadline if before_deadline
 
-    before_deadline ? dob <= deadline : dob >= deadline
+    dob >= deadline || female_overage?(dob, gender)
+  end
+
+  # Ist die Person nur über die Overage-Regel spielberechtigt, also zu alt für
+  # den Stichtag, aber innerhalb der Toleranz für Spielerinnen?
+  def female_overage?(birthdate, gender)
+    dob = parsed_birthdate(birthdate)
+    return false if dob.nil? || female_overage_deadline.nil? || before_deadline
+    return false unless female_gender?(gender)
+
+    dob < deadline && dob >= female_overage_deadline
+  end
+
+  # Die Altersvoraussetzung für die Ablehnungsmeldung eines Lizenzantrags. Mit
+  # Overage-Regel gehört die Grenze für Spielerinnen dazu, sonst sucht der
+  # Verein den Fehler beim Stichtag, der für sie nicht gilt.
+  def age_requirement_text
+    text = "#{before_deadline ? 'geboren bis' : 'geboren ab'} #{deadline.strftime('%d.%m.%Y')}"
+    return text unless female_overage_deadline && !before_deadline
+
+    "#{text}, Spielerinnen: geboren ab #{female_overage_deadline.strftime('%d.%m.%Y')}"
+  end
+
+  # Frühestes Geburtsdatum, das die Overage-Regel noch zulässt.
+  def female_overage_deadline
+    return nil if deadline.blank? || female_overage_years.blank?
+
+    deadline.advance(years: -female_overage_years.to_i)
   end
 
   # Erfüllt das Geburtsdatum das Mindestalter der Liga?
@@ -336,6 +377,7 @@ class League < ApplicationRecord
       deadline:,
       before_deadline:,
       minimum_age:,
+      female_overage_years:,
       parental_consent_required:,
       referee_feedback_enabled:,
       # Name der YouTube-Playlist der Übertragungen dieser Liga. Kein Geheimnis --
@@ -1180,7 +1222,11 @@ class League < ApplicationRecord
             suspension: suspension_item(suspension),
             approved_at:,
             requested_at:,
-            released_at: release_date_for(player, team_club_ids, release_dates)
+            released_at: release_date_for(player, team_club_ids, release_dates),
+            # Nur über die Overage-Regel spielberechtigt (age_eligible?). Je
+            # Zeile, weil die Regel an der Liga hängt und dieselbe Spielerin in
+            # einer Pokalliste ohne Regel keine Ausnahme braucht.
+            female_overage: female_overage?(player.birthdate, player.gender)
           }
 
           if with_other_licenses
@@ -1649,6 +1695,22 @@ class League < ApplicationRecord
     Date.parse(birthdate.to_s)
   rescue ArgumentError, TypeError
     nil
+  end
+
+  # players.gender kennt "M", "W" und "D" (siehe PlayerWording); upcase, weil
+  # der Altbestand auch Kleinbuchstaben tragen kann.
+  def female_gender?(gender)
+    gender.to_s.strip.upcase == 'W'
+  end
+
+  # Die Overage-Regel lockert eine Obergrenze ("geboren ab"). Bei "geboren bis"
+  # oder ohne Stichtag hat sie nichts zu lockern und wäre still wirkungslos
+  # gespeichert; das soll im Ligeneditor auffallen.
+  def female_overage_needs_born_from_deadline
+    return if female_overage_years.blank?
+    return if deadline.present? && !before_deadline
+
+    errors.add(:female_overage_years, 'gilt nur zusammen mit einem Stichtag „geboren ab“')
   end
 
   # Reihenfolge des Spielplans: Spieltag, Datum, Uhrzeit, Spielnummer.

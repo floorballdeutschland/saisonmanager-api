@@ -52,8 +52,10 @@ class GameMailer < ApplicationMailer
   end
 
   # Hinweis an eine Gastmannschaft: Der Ausrichter hat den Spieltagsbericht
-  # ausgefüllt, bestätigen oder beanstanden geht im Portal „Meine
-  # Auswärtsspieltage" (Login, kein Token-Link wie beim Ausrichter).
+  # ausgefüllt, bestätigen oder widersprechen geht im Portal (Spieltagsaufgaben,
+  # Reiter „Spieltagsbericht widersprechen", fe#621; Login, kein Token-Link wie
+  # beim Ausrichter). Der Link nimmt die alte Adresse /verein/spieltage, die das
+  # Frontend dorthin weiterleitet und die auch vor fe#621 funktioniert.
   #
   # Die Mail führt ALLE Antworten des Ausrichters auf, nicht nur die verneinten.
   # Genau darum geht es hier: Der Ausrichter beurteilt seinen eigenen Spieltag,
@@ -75,7 +77,7 @@ class GameMailer < ApplicationMailer
 
     templated_mail(
       to: recipients,
-      subject: "Spieltagsbericht bestätigen – #{game.home_team_name} vs. #{game.guest_team_name}",
+      subject: "Spieltagsbericht prüfen: #{game.home_team_name} gegen #{game.guest_team_name}",
       placeholders: {
         game_number: game.game_number,
         home_team: game.home_team_name,
