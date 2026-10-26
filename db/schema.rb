@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_24_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_26_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -501,6 +501,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_24_100000) do
     t.string "league_category_name"
     t.string "stream_playlist"
     t.integer "minimum_age", comment: "Mindestalter in Jahren, tagesgenau am Tag der Lizenzbeantragung geprüft; nil = keine Untergrenze. Unabhängig vom Stichtag (deadline/before_deadline)."
+    t.integer "female_overage_years", comment: "Overage-Regel: Spielerinnen (gender W) duerfen so viele Jahre aelter sein als der Stichtag \"geboren ab\" erlaubt; nil = keine Ausnahme. Nur bei before_deadline = false."
     t.index ["game_operation_id"], name: "index_leagues_on_game_operation_id"
     t.index ["legacy_ref"], name: "index_leagues_on_legacy_ref", unique: true, where: "(legacy_ref IS NOT NULL)"
   end

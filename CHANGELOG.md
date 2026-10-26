@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Overage-Regel für Spielerinnen** (feedback#68): An der Liga lässt sich jetzt einstellen, dass Spielerinnen um ein oder mehrere Jahre älter sein dürfen, als der Stichtag „geboren ab“ erlaubt (`leagues.female_overage_years`, 1 bis 9, leer = keine Ausnahme). Damit lassen sich z. B. die bayerischen Overage-Spielerinnen und reinen Mädchenteams einer Jugendliga lizenzieren, ohne den Jahrgang für alle zu öffnen. Maßgeblich ist das Geschlecht am Spielerprofil (`W`); die Regel gilt nur zusammen mit einem Stichtag „geboren ab“ und wandert bei der Liga-Kopie unverändert mit, während der Stichtag um ein Jahr weiterrückt. Eine Höchstzahl je Mannschaft prüft die API bewusst nicht: Die Lizenzlisten der Liga markieren Spielerinnen, die nur über die Regel spielberechtigt sind (`team_license.female_overage`), und der Verband zählt selbst. Die Ablehnung eines zu alten Antrags nennt die Grenze für Spielerinnen mit.
+
 ## [2.4.0] - 2026-10-24
 
 ### Neu
