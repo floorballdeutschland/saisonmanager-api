@@ -57,7 +57,7 @@ module Admin
     end
 
     def rule_params
-      params.require(:rule).permit(:course_type, :referee_license_level_id, :position, :min_games, :field_size,
+      params.require(:rule).permit(:course_type, :referee_license_level_id, :min_games, :field_size,
                                    age_groups: [])
     end
 
@@ -67,7 +67,6 @@ module Admin
         course_type: rule.course_type,
         referee_license_level_id: rule.referee_license_level_id,
         lizenzstufe: rule.referee_license_level&.name,
-        position: rule.position,
         min_games: rule.min_games,
         field_size: rule.field_size,
         age_groups: rule.age_groups

@@ -11,12 +11,12 @@ class RefereeLicenseSuggestionTest < ActiveSupport::TestCase
     @levels = %w[J1 J2 L3 L2 L1].each_with_index.to_h do |name, i|
       [name, RefereeLicenseLevel.create!(name: name, validity_years: 1, position: i)]
     end
-    rule('j', 'J1', position: 0)
-    rule('j', 'J2', position: 1)
-    rule('g', 'L3', position: 2)
-    rule('f', 'L1', position: 3, min_games: 4, field_size: 'GF',
+    rule('j', 'J1')
+    rule('j', 'J2')
+    rule('g', 'L3')
+    rule('f', 'L1', min_games: 4, field_size: 'GF',
                     age_groups: ['Herren', 'Damen', 'U15 Junioren', 'U17 Junioren'])
-    rule('f', 'L2', position: 4)
+    rule('f', 'L2')
     @referee = create(:referee)
   end
 
@@ -58,6 +58,16 @@ class RefereeLicenseSuggestionTest < ActiveSupport::TestCase
     assert_equal ['L2', 19], january.values_at(:lizenzstufe, :season_id)
   end
 
+  # Ohne eigene Reihenfolge: Bedingte Regeln vor dem Rueckfall, die hoehere
+  # Mindestzahl zuerst.
+  test 'hoehere Mindestzahl wird zuerst geprueft' do
+    rule('f', 'L3', min_games: 10, field_size: 'GF')
+    10.times { game_in('18', 'GF', 'Herren') }
+
+    assert_equal 'L3', suggest('f', %w[L3 L2 L1])[:lizenzstufe]
+    assert_equal 'L1', suggest('f', %w[L2 L1])[:lizenzstufe]
+  end
+
   test 'J-Kurs folgt der Zielstufe des Kurses' do
     assert_equal 'J1', suggest('j', %w[J1])[:lizenzstufe]
     assert_equal 'J2', suggest('j', %w[J2])[:lizenzstufe]
@@ -88,9 +98,9 @@ class RefereeLicenseSuggestionTest < ActiveSupport::TestCase
 
   private
 
-  def rule(course_type, level, position:, min_games: nil, field_size: 'all', age_groups: [])
+  def rule(course_type, level, min_games: nil, field_size: 'all', age_groups: [])
     RefereeLicenseSuggestionRule.create!(course_type: course_type, referee_license_level: @levels[level],
-                                         position: position, min_games: min_games, field_size: field_size,
+                                         min_games: min_games, field_size: field_size,
                                          age_groups: age_groups)
   end
 

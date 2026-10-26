@@ -1029,13 +1029,12 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_26_120000) do
   create_table "referee_license_suggestion_rules", force: :cascade do |t|
     t.string "course_type", null: false
     t.bigint "referee_license_level_id", null: false
-    t.integer "position", default: 0, null: false
     t.integer "min_games", comment: "NULL: ohne Bedingung"
     t.string "field_size", default: "all", null: false, comment: "all | KF | GF"
     t.string "age_groups", default: [], null: false, comment: "Gezählte Altersklassen (leagues.age_group). Leer: alle.", array: true
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["course_type", "position"], name: "idx_on_course_type_position_05b55a34b8"
+    t.index ["course_type"], name: "index_referee_license_suggestion_rules_on_course_type"
     t.index ["referee_license_level_id"], name: "idx_on_referee_license_level_id_d8da0f8cb3"
   end
 

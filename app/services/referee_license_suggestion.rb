@@ -1,11 +1,14 @@
 # Lizenzvorschlag für ein Kursergebnis aus den Kursen im System (api#861). Nur
 # ein Vorschlag: Die Lizenz legt weiter FD in der Lizenzvergabe fest.
 #
-# Kandidaten sind die Regeln zum Kurstyp, in ihrer Reihenfolge und beschränkt
-# auf die Stufen, die der Kurs vergibt (license_level_ids; ein Kurs ohne
-# Stufen schränkt nicht ein). Gewählt wird die erste, deren Mindestzahl an
-# Spielen erreicht ist. So ergibt ein J-Kurs mit Zielstufe J2 die J2, obwohl
-# die J1-Regel davor steht.
+# Kandidaten sind die Regeln zum Kurstyp, beschränkt auf die Stufen, die der
+# Kurs vergibt (license_level_ids; ein Kurs ohne Stufen schränkt nicht ein).
+# Gewählt wird die erste, deren Mindestzahl an Spielen erreicht ist. Geprüft
+# werden zuerst die Regeln mit Bedingung, die höchste Mindestzahl vorn, danach
+# die ohne Bedingung als Rückfall; bei Gleichstand entscheidet die Reihenfolge
+# der Lizenzstufen. Eine eigene Reihenfolge der Regeln gibt es nicht: So
+# ergibt ein F-Kurs L1 vor L2, ohne dass jemand das einstellen muss, und ein
+# J-Kurs mit Zielstufe J2 die J2.
 #
 # Maßgebliche Saison ist die, die im Kalenderjahr vor dem Kursende begann:
 # Kursende Juni 2026 und September 2026 zählen 2025/26, Januar 2027 zählt die
@@ -49,11 +52,12 @@ class RefereeLicenseSuggestion
   private
 
   def candidate_rules
-    rules = RefereeLicenseSuggestionRule.where(course_type: @course.course_type)
-                                        .includes(:referee_license_level).order(:position, :id)
+    rules = RefereeLicenseSuggestionRule.where(course_type: @course.course_type).includes(:referee_license_level)
     allowed = Array(@course.license_level_ids)
     rules = rules.where(referee_license_level_id: allowed) if allowed.any?
-    rules.select { |r| r.referee_license_level.active }
+    rules.select { |r| r.referee_license_level.active }.sort_by do |r|
+      [r.min_games ? 0 : 1, -r.min_games.to_i, r.referee_license_level.position || 0, r.id]
+    end
   end
 
   # Ohne zugeordneten Schiedsrichter (neue Person) oder ohne bestimmbare Saison

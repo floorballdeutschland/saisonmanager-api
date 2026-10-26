@@ -95,7 +95,7 @@ class RefereeCourseLicensingTest < ActionDispatch::IntegrationTest
   end
 
   test 'Lizenzvergabe nennt den Vorschlag aus den Regeln' do
-    RefereeLicenseSuggestionRule.create!(course_type: 'g', referee_license_level: @l3, position: 0)
+    RefereeLicenseSuggestionRule.create!(course_type: 'g', referee_license_level: @l3)
     ready_course
     RefereeCourseSubmission.new(@course, submitted_by: @rsk).call
     login(@fd)

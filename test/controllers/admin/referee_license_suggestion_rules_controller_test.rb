@@ -12,7 +12,7 @@ module Admin
       login(create(:user, :admin))
 
       post '/api/v2/admin/referee_license_suggestion_rules',
-           params: { rule: { course_type: 'f', referee_license_level_id: @l1.id, position: 1, min_games: 4,
+           params: { rule: { course_type: 'f', referee_license_level_id: @l1.id, min_games: 4,
                              field_size: 'GF', age_groups: ['U17 Junioren', ''] } }, as: :json
       assert_response :created
       id = response.parsed_body['id']
