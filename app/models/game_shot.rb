@@ -35,8 +35,10 @@
 # - `empty_net`: aufs leere Tor, der Gegner spielt ohne Torhüter. Dann gibt
 #   es keinen Torhüter am Schuss und keine Parade; der Schuss belastet so
 #   keine Fangquote.
-# - `extra_attacker`: das schießende Team spielt ohne eigenen Torhüter
-#   (6 gegen 5).
+# - `extra_attacker`: das schießende Team spielt ohne eigenen Torhüter.
+#   Das ist nicht immer 6 gegen 5 (Torwart raus in Überzahl ist 6 gegen 4);
+#   die Spielstärke kennt das Tablet nicht, sie ergibt sich erst aus den
+#   laufenden Strafen (GameShotStrength, fe#610).
 # Widersprüche gleicht `align_situation_flags` an (Ergebnis und Torhüter
 # gewinnen), damit ältere Tablets ohne diese Kennungen nie mit 422 hängen.
 # Der normale Spielbericht (`games.events`, `goal_type`) weiß davon nichts.

@@ -7,9 +7,14 @@
 # Tore aus Freischlägen. Freischläge zählen nirgends als Schuss, vorgemerkte
 # Szenen gehen gar nicht ein.
 #
-# Strafschüsse, Schüsse aufs leere Tor und Schüsse in 6 gegen 5 (Feedback
-# #61, #63, #64) tragen ihre Kennung am Schuss und werden je Team und
-# Abschnitt gezählt. Paraden ohne Feldposition (#62, Schnellzähler) stehen in
+# Strafschüsse, Schüsse aufs leere Tor und Schüsse ohne eigenen Torhüter
+# (Feedback #61, #63, #64) tragen ihre Kennung am Schuss und werden je Team
+# und Abschnitt gezählt. Ohne eigenen Torhüter heißt nicht automatisch 6
+# gegen 5: Die Spielstärke leitet GameShotStrength aus den zum Schuss
+# laufenden Strafen ab (fe#610). `goals_extra_attacker` bleibt die Summe
+# aller Tore ohne eigenen Torhüter, `goals_extra_attacker_<gruppe>` teilt sie
+# auf (siehe EXTRA_ATTACKER_BUCKETS), die Gruppen ergeben zusammen genau die
+# Summe. Paraden ohne Feldposition (#62, Schnellzähler) stehen in
 # `shots` mit `x`/`y` = nil: Sie zählen überall mit, gehören aber in keine
 # Schussgrafik. Die Torhüter haben ihre Werte zusätzlich je Abschnitt.
 #
@@ -22,6 +27,11 @@
 # an der Verknüpfung (#flush!).
 class GameShotStats
   CACHE_TTL = 1.minute
+  # Aufteilung der Tore ohne eigenen Torhüter nach Spielstärke, siehe
+  # GameShotStrength: 6 gegen 5, 6 gegen 4, jede andere bekannte Stärke
+  # (6 gegen 3, 5 gegen 4 usw., die genaue steht am Schuss) und unbekannt
+  # (Schuss ohne Spielzeit).
+  EXTRA_ATTACKER_BUCKETS = %w[6v5 6v4 other unknown].freeze
   VARIANTS = %w[realtime delayed].freeze
 
   def self.cache_key(game, variant)
@@ -50,6 +60,7 @@ class GameShotStats
     scope = scope.where(tapped_at: ...cutoff) if cutoff
     @shots, @free_hits = scope.to_a.partition(&:shot?)
     @names = PublicPersonRefs.new(game)
+    @strengths = extra_attacker_strengths
   end
 
   def as_json(*)
@@ -79,6 +90,10 @@ class GameShotStats
       from_penalty_shot: shot.from_penalty_shot,
       empty_net: shot.empty_net,
       extra_attacker: shot.extra_attacker,
+      # Feldspieler gegen Feldspieler ('6v5', '5v4' usw.) nur bei
+      # `extra_attacker`, nil ohne Kennung oder ohne bekannte Spielzeit
+      # (GameShotStrength).
+      extra_attacker_strength: @strengths[shot.id],
       shooter: @names.ref(shot.team, shot.shooter_player_id)
     }
   end
@@ -120,7 +135,22 @@ class GameShotStats
       goals_from_penalty_shot: strafschuesse.count { |shot| shot.result == 'goal' },
       goals_empty_net: tore.count(&:empty_net),
       goals_extra_attacker: tore.count(&:extra_attacker)
-    }
+    }.merge(extra_attacker_buckets(tore.select(&:extra_attacker)))
+  end
+
+  def extra_attacker_buckets(tore)
+    gruppen = tore.map { |shot| GameShotStrength.bucket(@strengths[shot.id]) }.tally
+    EXTRA_ATTACKER_BUCKETS.to_h { |gruppe| [:"goals_extra_attacker_#{gruppe}", gruppen.fetch(gruppe, 0)] }
+  end
+
+  # Spielstärke je Schuss-id. Den Spielbericht liest das nur, wenn es
+  # überhaupt einen Schuss ohne eigenen Torhüter gibt.
+  def extra_attacker_strengths
+    mit_kennung = @shots.select(&:extra_attacker)
+    return {} if mit_kennung.empty?
+
+    staerke = GameShotStrength.new(@game)
+    mit_kennung.to_h { |shot| [shot.id, staerke.for(shot)] }
   end
 
   # Je Torhüter des verteidigenden Teams. Schüsse ohne erfassten Torhüter

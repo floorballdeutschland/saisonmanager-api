@@ -702,6 +702,15 @@ class GameTest < ActiveSupport::TestCase
     assert_equal :not_assigned, g.formatted_events.first[:goal_type]
   end
 
+  # Die Markierung geht trotz verdrängter Torart mit: Das Tablet erkennt daran,
+  # dass dem Tor kein Schuss zugeordnet werden darf (api#857).
+  test 'formatted_events: technical_goal steht an jedem markierten Tor, sonst nicht' do
+    g = build_game(events: [technical_goal_event('home_number' => 2000, 'time' => '01:00'),
+                            technical_goal_event('id' => 2, 'time' => '02:00'),
+                            technical_goal_event('id' => 3, 'time' => '03:00').except('goal_type')])
+    assert_equal [true, true, nil], g.formatted_events.pluck(:technical_goal)
+  end
+
   # Ein technisches Tor zählt wie jedes andere Tor, Vorlage eingeschlossen. Die
   # Wertung hängt an den Trikotnummern, nicht an der Torart; dieser Test hält
   # fest, dass die neue Markierung daran nichts ändert.
