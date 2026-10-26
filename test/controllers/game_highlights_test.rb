@@ -29,6 +29,7 @@ class GameHighlightsTest < ActionDispatch::IntegrationTest
     assert_response :success
     body = response.parsed_body
     assert_equal 'vid-1', body['video_id']
+    assert_equal false, body['calibrated']
     assert_equal([1, 3], body['scenes'].map { |s| s['event_id'] })
     erste = body['scenes'].first
     assert_equal 2280 - 15, erste['start']
@@ -72,6 +73,7 @@ class GameHighlightsTest < ActionDispatch::IntegrationTest
 
     get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
 
+    assert response.parsed_body['calibrated']
     erste = response.parsed_body['scenes'].first
     assert_equal [2280 + 20 - 12, 2280 + 20 + 8], erste.values_at('start', 'end')
   end
@@ -90,7 +92,7 @@ class GameHighlightsTest < ActionDispatch::IntegrationTest
 
     get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
 
-    assert_equal({ 'video_id' => nil, 'scenes' => [] }, response.parsed_body)
+    assert_equal({ 'video_id' => nil, 'calibrated' => nil, 'scenes' => [] }, response.parsed_body)
   end
 
   test 'Szenen außerhalb der Aufzeichnung fallen weg, das Ende wird abgeschnitten' do
@@ -120,7 +122,7 @@ class GameHighlightsTest < ActionDispatch::IntegrationTest
 
     get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
 
-    assert_equal({ 'video_id' => nil, 'scenes' => [] }, response.parsed_body)
+    assert_equal({ 'video_id' => nil, 'calibrated' => nil, 'scenes' => [] }, response.parsed_body)
     assert_not_includes response.body, 'vid-1'
   end
 
