@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-10-26
+
 ### Neu
 
 - **Lizenzvorschlag bei Kursen im System** (api#861): Die Lizenzvergabe (`GET admin/referee_course_licensing`) nennt je offener Zeile einen `suggestion` mit Stufe, maßgeblicher Saison, gezählten Spielen und Mindestzahl. Nur ein Vorschlag: Die Stufe setzt FD weiterhin selbst. Die Regeln pflegt Admin an der jeweiligen Lizenzstufe (`admin/referee_license_suggestion_rules`): Kurstyp, optionale Mindestzahl an Spielen, Wertung (alle, Kleinfeld, Großfeld) und gezählte Altersklassen. Eine Regel mit Mindestzahl braucht mindestens eine Altersklasse, sonst antwortet die API mit 422; „alle“ heißt alle anhaken. Es gewinnt die erste Regel, deren Stufe der Kurs vergibt und deren Mindestzahl erreicht ist; geprüft werden zuerst die Regeln mit Bedingung (höchste Mindestzahl vorn), danach die ohne als Rückfall, bei Gleichstand nach der Reihenfolge der Lizenzstufen. Vorbelegt mit den bisherigen Regeln: J-Kurs J1 bzw. J2, G-Kurs L3, F-Kurs L1 ab vier Spielen Großfeld ab U15, sonst L2; N1 und N2 ohne Regel. Maßgeblich ist die Saison, die im Kalenderjahr vor dem Kursende begann (Kursende Juni oder September 2026: 2025/26, Januar 2027: die laufende 2026/27). Für den CSV-Kursimport gibt es keinen Vorschlag.
