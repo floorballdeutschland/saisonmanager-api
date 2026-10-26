@@ -901,6 +901,23 @@ module Admin
       assert_equal 1, player_ids.count(doppelt.id), 'im Kader steht der Spieler einmal, nicht je Lizenz'
     end
 
+    # Die Hoechstzahl je Mannschaft prueft die API nicht; die SBK zaehlt anhand
+    # dieser Markierung selbst.
+    test 'Liga-Detailansicht markiert Overage-Spielerinnen' do
+      @league_go1.update!(deadline: Date.new(2014, 1, 1), before_deadline: false, female_overage_years: 1)
+      @player_go1.update!(birthdate: Date.new(2013, 6, 1), gender: 'W')
+      regulaer = create(:player, birthdate: Date.new(2014, 6, 1), gender: 'W',
+                                 with_licenses: [{ team: @team_go1, status: License::APPROVED, season_id: '18' }])
+
+      login_as(@admin)
+      get "/api/v2/admin/leagues/#{@league_go1.id}/licenses"
+      assert_response :success
+
+      players = JSON.parse(response.body).flat_map { |t| t['players'] || [] }
+      assert players.find { |pl| pl['id'] == @player_go1.id }.dig('team_license', 'female_overage')
+      assert_not players.find { |pl| pl['id'] == regulaer.id }.dig('team_license', 'female_overage')
+    end
+
     # Die Sperre setzt die Spielberechtigung aus, und ein abgelehnter Antrag
     # hat keine. Ohne diese Grenze traege die Zeile den Status "gesperrt"
     # statt "abgelehnt", sobald der Spieler irgendwo gesperrt ist -- und der
