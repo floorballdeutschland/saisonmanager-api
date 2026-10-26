@@ -11,6 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Neu
 
+- **Highlights melden, ob sie kalibriert sind**: `GET games/:id/highlights.json` liefert jetzt `calibrated` (`true`/`false`, `null` ohne Übertragung). Solange niemand die Aufzeichnung kalibriert hat, liegen die Szenen nur ungefähr; die Spielseite zeigt dann „Kalibrierung ausstehend“.
 - **„Heute live“ meldet, ob ein Spiel Highlights hat** (saisonmanager#612): `GET live_streams` liefert je Spiel `has_highlights`. Es ist nur true, wenn `games/:id/highlights` mindestens eine öffentliche Szene zeigt, also bei Spielen im Tabletmodus mit einem Tor mit verknüpftem Schuss oder einer vorgemerkten Szene in einer verlinkten Übertragung mit bekanntem Start. Spiele ohne Tabletmodus sind ohne weitere Abfrage false. Bei laufenden Spielen gilt dieselbe Verzögerung wie für die Highlights selbst: Ein Schlüssel ohne Echtzeit-Freigabe sieht den Wert erst, wenn ihm auch die Spielseite die Szene zeigt. Grundlage für den Button „Highlights ansehen“ auf der Live-Seite.
 
 ### Verbessert
