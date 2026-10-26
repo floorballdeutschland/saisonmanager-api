@@ -220,6 +220,9 @@ module Admin
           id: referee.id, lizenznummer: referee.lizenznummer, lizenzstufe: referee.lizenzstufe,
           gueltigkeit: referee.gueltigkeit, career_ended: referee.career_ended?
         },
+        # Nur ein Vorschlag aus den Regeln (RefereeLicenseSuggestion), die
+        # Stufe setzt FD weiter selbst. Für entschiedene Zeilen entfällt er.
+        suggestion: result.status == 'pending_review' ? RefereeLicenseSuggestion.for(result) : nil,
         registration: registration && {
           id: registration.id, identity_match: registration.identity_match,
           match_candidates: registration.match_candidates,
