@@ -86,7 +86,9 @@ module Admin
       # `full`: Geburtsdatum, Anschrift, E-Mail und Benutzername braucht ein
       # Verein nicht. Seine Sicht ist vm/referees/:id.
       full = can_access_referee?(@referee, include_vm: false)
-      render json: referee_json(@referee, full:, contact: can_view_contact_data?)
+      data = referee_json(@referee, full:, contact: can_view_contact_data?)
+      data[:season_game_stats] = RefereeSeasonGameStats.for(@referee)
+      render json: data
     end
 
     # GET /api/v2/admin/referees/:id/feedbacks

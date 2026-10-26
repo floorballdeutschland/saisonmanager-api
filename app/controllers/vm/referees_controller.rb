@@ -92,10 +92,11 @@ module Vm
       }
     end
 
-    # Bisher dieselben Felder wie die Listenzeile. Eine eigene Methode, damit
-    # ein Feld für das Detail nicht versehentlich auch in der Liste landet.
+    # Die Listenfelder plus die Einsatzzahlen der laufenden und der Vorsaison.
+    # Eine eigene Methode, damit ein Feld für das Detail nicht versehentlich
+    # auch in der Liste landet.
     def referee_vm_detail_json(referee)
-      referee_vm_json(referee)
+      referee_vm_json(referee).merge(season_game_stats: RefereeSeasonGameStats.for(referee))
     end
 
     # Gleiche Felder wie admin/referees#games ohne include_refs.

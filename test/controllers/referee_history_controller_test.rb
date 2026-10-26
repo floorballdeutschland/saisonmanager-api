@@ -106,6 +106,15 @@ class RefereeHistoryControllerTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
+  test 'season_stats liefert die Einsatzzahlen der laufenden und der Vorsaison' do
+    login(@user)
+    get '/api/v2/referee/history/season_stats'
+    assert_response :success
+
+    assert_equal([[18, 1], [17, 1]], response.parsed_body.map { |s| [s['season_id'], s['games']] })
+    assert(response.parsed_body.all? { |s| s.key?('games_gf_u15_plus') })
+  end
+
   private
 
   def login(user)
