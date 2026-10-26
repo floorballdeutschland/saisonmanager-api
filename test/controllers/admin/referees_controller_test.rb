@@ -550,6 +550,36 @@ module Admin
       assert_not response.parsed_body.key?('kurzfristig_mobil')
     end
 
+    # Das Admin-Detail lieferte dem Vereinsmanager unter `full` auch
+    # Geburtsdatum, Anschrift, E-Mail und Benutzername, ohne dass eine Seite sie
+    # zeigte. Seine Sicht ist vm/referees/:id.
+    test 'VM bekommt im Admin-Detail weder Geburtsdatum noch Anschrift' do
+      club = create(:club)
+      referee = create(:referee, club_id: club.id, email: 'schiri@example.org',
+                                 strasse: 'Hauptstraße', plz: '12345', ort: 'Musterstadt')
+      login(vm_user(club.id))
+
+      get "/api/v2/admin/referees/#{referee.id}"
+
+      assert_response :success
+      %w[geburtsdatum strasse hausnummer plz ort email user_name user_id].each do |key|
+        assert_not response.parsed_body.key?(key), "#{key} gehört nicht in die Vereinssicht"
+      end
+    end
+
+    test 'LV-RSK bekommt im Admin-Detail weiter die vollen Stammdaten' do
+      sa = create(:state_association)
+      go = create(:game_operation, state_association_id: sa.id)
+      referee = create(:referee, club_id: create(:club, state_association_id: sa.id).id, strasse: 'Hauptstraße')
+      login(rsk_user(go.id))
+
+      get "/api/v2/admin/referees/#{referee.id}"
+
+      assert_response :success
+      assert_equal 'Hauptstraße', response.parsed_body['strasse']
+      assert response.parsed_body.key?('geburtsdatum')
+    end
+
     # Ein Gast traegt keine Lizenznummer. Das Anlageformular belegt das Feld
     # aber mit der naechsten freien Nummer vor und blendet es beim Haken "Gast"
     # nur aus -- der Wert kam also mit. Der Gast belegte damit eine Nummer, die
