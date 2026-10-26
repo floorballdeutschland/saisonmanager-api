@@ -24,6 +24,10 @@
 # Szenen öffentlich auf eine andere, unkalibrierte Übertragung umschalten.
 # `video_id` ist nil, solange keine Übertragung mit bekanntem Start existiert;
 # dann gibt es auch keine Szenen.
+#
+# `calibrated` sagt, ob die gewählte Übertragung kalibriert ist (fe#560).
+# Unkalibriert liegen die Szenen nur ungefähr, die Seite weist darauf hin.
+# nil ohne Übertragung.
 class GameHighlights
   CACHE_TTL = 1.minute
 
@@ -61,9 +65,9 @@ class GameHighlights
 
   def as_json(*)
     beste = best
-    return { video_id: nil, scenes: [] } if beste.nil?
+    return { video_id: nil, calibrated: nil, scenes: [] } if beste.nil?
 
-    { video_id: beste[0].broadcast_id, scenes: beste[1] }
+    { video_id: beste[0].broadcast_id, calibrated: beste[0].calibrated?, scenes: beste[1] }
   end
 
   # [Übertragung, Szenen] mit den meisten Szenen, oder nil. Gewählt wird nach

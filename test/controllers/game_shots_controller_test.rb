@@ -225,6 +225,76 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     assert_nil GameShot.find_by(client_uuid: 'gast').event_id
   end
 
+  test 'Eigentor und technisches Tor nehmen sich keinen freien Tor-Schuss' do
+    post_shots([shot('frei', result: 'goal', game_time: '15:00')])
+
+    add_goal('home', 1, 0, number: 1000)
+    add_goal('home', 2, 0, goal_type: 'technical', number: 7)
+    add_goal('home', 3, 0, goal_type: 'technical')
+
+    assert_response :success
+    assert_equal 3, @game.reload.events.size
+    assert_nil GameShot.find_by(client_uuid: 'frei').event_id
+  end
+
+  test 'nachgereichte Tor-Schüsse übergehen Eigentor und technisches Tor, auch wenn sie zeitlich näher liegen' do
+    add_goal('home', 1, 0, time: '04:00', number: 1000)
+    add_goal('home', 2, 0, time: '05:00', goal_type: 'technical', number: 7)
+    add_goal('home', 3, 0, time: '05:30', goal_type: 'technical')
+    add_goal('home', 4, 0, time: '09:00')
+
+    post_shots([shot('spaet', result: 'goal', game_time: '04:30')])
+
+    assert_response :success
+    assert_equal 4, GameShot.find_by(client_uuid: 'spaet').event_id
+  end
+
+  test 'wird aus dem Tor ein Eigentor oder technisches Tor, fällt die Verknüpfung weg' do
+    post_shots([shot('a', result: 'goal'), shot('b', result: 'goal', at: @t0 + 1),
+                shot('c', result: 'goal', at: @t0 + 2)])
+    add_goal('home', 1, 0)
+    add_goal('home', 2, 0)
+    add_goal('home', 3, 0)
+    assert_equal [1, 2, 3], GameShot.where(game: @game).order(:client_uuid).pluck(:event_id)
+
+    post "/api/v2/user/games/#{@game.id}/events/update",
+         params: { event_id: 1, event_type: 'goal', event_team: 'home', period: 1, time: '15:00',
+                   home_goals: 1, guest_goals: 0, home_number: 1000, confirm_score_change: true },
+         headers: token_header, as: :json
+    assert_response :success
+    assert_nil GameShot.find_by(client_uuid: 'a').event_id
+
+    post "/api/v2/user/games/#{@game.id}/events/update",
+         params: { event_id: 2, event_type: 'goal', event_team: 'home', period: 1, time: '15:00',
+                   home_goals: 2, guest_goals: 0, home_number: 7, goal_type: 'technical',
+                   confirm_score_change: true },
+         headers: token_header, as: :json
+    assert_response :success
+    assert_nil GameShot.find_by(client_uuid: 'b').event_id
+
+    post "/api/v2/user/games/#{@game.id}/events/update",
+         params: { event_id: 3, event_type: 'goal', event_team: 'home', period: 1, time: '15:00',
+                   home_goals: 3, guest_goals: 0, home_number: 2000, goal_type: 'technical',
+                   confirm_score_change: true },
+         headers: token_header, as: :json
+    assert_response :success
+    assert_nil GameShot.find_by(client_uuid: 'c').event_id
+  end
+
+  test 'von Hand lässt sich kein Schuss an ein Eigentor oder technisches Tor hängen' do
+    add_goal('home', 1, 0, number: 1000)
+    add_goal('home', 2, 0, goal_type: 'technical', number: 7)
+    add_goal('home', 3, 0, goal_type: 'technical')
+    post_shots([shot('a', result: 'goal')])
+
+    [1, 2, 3].each do |event_id|
+      post "/api/v2/games/#{@game.id}/shots/a/link.json", params: { event_id: event_id }, headers: token_header,
+                                                          as: :json
+      assert_response :unprocessable_entity
+    end
+    assert_nil GameShot.find_by(client_uuid: 'a').event_id
+  end
+
   test 'Löschen des Tores löst die Verknüpfung, der Schuss bleibt' do
     post_shots([shot('a', result: 'goal')])
     add_goal('home', 1, 0)
@@ -375,7 +445,7 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
 
     heim = stats['teams']['home']
     assert_equal({ 'shots' => 4, 'on_goal' => 3, 'goals' => 1, 'blocked' => 1, 'missed' => 0, 'free_hits' => 0,
-                   'shots_from_free_hit' => 0, 'goals_from_free_hit' => 0, 'penalty_shots' => 0, 'goals_from_penalty_shot' => 0, 'goals_empty_net' => 0, 'goals_extra_attacker' => 0 },
+                   'shots_from_free_hit' => 0, 'goals_from_free_hit' => 0, 'penalty_shots' => 0, 'goals_from_penalty_shot' => 0, 'goals_empty_net' => 0, 'goals_extra_attacker' => 0 }.merge(ohne_torhueter_null),
                  heim.except('by_period'))
     assert_equal 2, heim['by_period']['2']['shots']
     assert_equal 0, stats['teams']['guest']['by_period']['2']['shots'], 'gleiche Abschnitte für beide Teams'
@@ -481,7 +551,7 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
 
     heim = stats['teams']['home']
     assert_equal({ 'shots' => 3, 'on_goal' => 2, 'goals' => 1, 'blocked' => 0, 'missed' => 1, 'free_hits' => 1,
-                   'shots_from_free_hit' => 2, 'goals_from_free_hit' => 1, 'penalty_shots' => 0, 'goals_from_penalty_shot' => 0, 'goals_empty_net' => 0, 'goals_extra_attacker' => 0 },
+                   'shots_from_free_hit' => 2, 'goals_from_free_hit' => 1, 'penalty_shots' => 0, 'goals_from_penalty_shot' => 0, 'goals_empty_net' => 0, 'goals_extra_attacker' => 0 }.merge(ohne_torhueter_null),
                  heim.except('by_period'))
     assert_equal %w[1 3], heim['by_period'].keys, 'Abschnitte nur mit Freischlag zählen mit'
     assert_equal 1, stats['teams']['guest']['by_period']['3']['free_hits']
@@ -642,6 +712,36 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
                    '3' => { 'saves' => 0, 'shots_against' => 1, 'save_pct' => 0.0 } }, torhueter['by_period'])
   end
 
+  test 'detailed_stats: Tore ohne eigenen Torhüter nach Spielstärke aus den laufenden Strafen (fe#610)' do
+    aufstellung!
+    @game.update!(ended: true, events: [
+      { 'id' => 1, 'period' => 3, 'time' => '10:00', 'event_team' => 'guest', 'guest_number' => 1,
+        'penalty_id' => '1', 'penalty_code_id' => '1', 'penalty_mapping' => 'penalty_2' },
+      { 'id' => 2, 'period' => 3, 'time' => '11:20', 'event_team' => 'home', 'home_number' => 7,
+        'penalty_id' => '1', 'penalty_code_id' => '1', 'penalty_mapping' => 'penalty_2' }
+    ])
+    post_shots([
+      shot('a', result: 'goal', extra_attacker: true, period: 3, game_time: '9:00'),
+      shot('b', result: 'goal', extra_attacker: true, period: 3, game_time: '11:00', at: @t0 + 5),
+      shot('c', result: 'goal', extra_attacker: true, period: 3, game_time: nil, at: @t0 + 10),
+      shot('d', result: 'saved', extra_attacker: true, period: 3, game_time: '11:30', at: @t0 + 15),
+      shot('e', result: 'goal', extra_attacker: true, period: 3, game_time: '11:40', at: @t0 + 20)
+    ])
+    assert_response :success
+
+    get "/api/v2/games/#{@game.id}/detailed_stats.json", headers: { 'X-Api-Key' => API_KEY }
+
+    assert_response :success
+    stats = response.parsed_body
+    assert_equal ['6v5', '6v4', nil, '5v4', '5v4'], stats['shots'].pluck('extra_attacker_strength'),
+                 'ohne Spielzeit unbekannt, auch ein gehaltener Schuss trägt die Stärke'
+    erwartet = { 'goals_extra_attacker' => 4, 'goals_extra_attacker_6v5' => 1, 'goals_extra_attacker_6v4' => 1,
+                 'goals_extra_attacker_other' => 1, 'goals_extra_attacker_unknown' => 1 }
+    assert_equal erwartet, stats['teams']['home'].slice(*erwartet.keys)
+    assert_equal erwartet, stats['teams']['home']['by_period']['3'].slice(*erwartet.keys)
+    assert_equal 0, stats['teams']['guest']['goals_extra_attacker_6v4']
+  end
+
   test 'detailed_stats: Torhüterwechsel, Abschnitt ohne Einsatz ist 0 von 0 ohne Quote' do
     @game.update!(ended: true, players: {
                     'home' => [{ 'player_id' => 77, 'trikot_number' => 7, 'player_firstname' => 'A', 'player_name' => 'B' }],
@@ -769,6 +869,10 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
 
   private
 
+  def ohne_torhueter_null
+    %w[6v5 6v4 other unknown].to_h { |gruppe| ["goals_extra_attacker_#{gruppe}", 0] }
+  end
+
   def build_game(game_day)
     Game.create!(game_day: game_day,
                  home_team: create(:team, league: @league, club: @club),
@@ -814,10 +918,14 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     shot(uuid, at: at, **optionen).except(:result, :shooter_player_id, :goalkeeper_player_id).merge(kind: 'free_hit')
   end
 
-  def add_goal(team, home, guest, time: '15:00', period: 1, confirm: false)
+  # `number: 1000` ist ein Eigentor. Ein technisches Tor (`goal_type: 'technical'`)
+  # mit 2000 zeigt formatted_events als „nicht angegeben“; einen Schuss bekommt
+  # es trotzdem nicht.
+  def add_goal(team, home, guest, time: '15:00', period: 1, confirm: false, number: 2000, goal_type: nil)
     post "/api/v2/user/games/#{@game.id}/events/add",
          params: { event_type: 'goal', event_team: team, period: period, time: time, home_goals: home,
-                   guest_goals: guest, "#{team}_number": 2000, confirm_score_change: confirm },
+                   guest_goals: guest, "#{team}_number": number, goal_type: goal_type,
+                   confirm_score_change: confirm }.compact,
          headers: token_header, as: :json
   end
 end

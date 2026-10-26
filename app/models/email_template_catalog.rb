@@ -747,8 +747,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       mailer_class: 'GameMailer',
       action_name: 'checklist_guest_team_notice',
       description: 'Hinweis an die Gastmannschaften mit den Antworten des Ausrichters und der Frist, ' \
-                   'den Spieltag im Portal zu bestätigen oder zu beanstanden.',
-      default_subject: 'Spieltagsbericht bestätigen – {{home_team}} vs. {{guest_team}}',
+                   'den Spieltag im Portal zu bestätigen oder ihm zu widersprechen.',
+      default_subject: 'Spieltagsbericht prüfen: {{home_team}} gegen {{guest_team}}',
       default_from: nil,
       default_reply_to: nil,
       placeholders: [

@@ -76,6 +76,37 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_equal License::REQUESTED, @player.licenses.first['history'].last['license_status_id']
   end
 
+  # Overage-Regel: Spielerinnen duerfen ein Jahr aelter sein als der Stichtag
+  test 'Lizenzantrag einer Overage-Spielerin ist erfolgreich' do
+    @league.update!(deadline: Date.new(2014, 1, 1), before_deadline: false, female_overage_years: 1)
+    @player.update!(birthdate: Date.new(2013, 6, 1), gender: 'W')
+
+    login_as create(:user, :admin)
+
+    post "/api/v2/user/players/#{@player.id}/request_license",
+         params: { team_id: @team.id },
+         as: :json
+
+    assert_response :ok
+    assert_equal 1, @player.reload.licenses.length
+  end
+
+  test 'Lizenzantrag eines gleich alten Spielers scheitert trotz Overage-Regel' do
+    @league.update!(deadline: Date.new(2014, 1, 1), before_deadline: false, female_overage_years: 1)
+    @player.update!(birthdate: Date.new(2013, 6, 1), gender: 'M')
+
+    login_as create(:user, :admin)
+
+    post "/api/v2/user/players/#{@player.id}/request_license",
+         params: { team_id: @team.id },
+         as: :json
+
+    assert_response :unprocessable_entity
+    assert_match(/geboren ab 01\.01\.2014, Spielerinnen: geboren ab 01\.01\.2013/,
+                 JSON.parse(response.body)['message'])
+    assert_equal 0, @player.reload.licenses.length
+  end
+
   # Mindestalter der Liga: tagesgenau am Tag der Beantragung
   test 'Lizenzantrag unter dem Mindestalter der Liga ergibt 422 mit Mindestalter-Meldung' do
     @league.update!(minimum_age: 15)

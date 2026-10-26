@@ -58,7 +58,12 @@ class GamesGuestTeamChecklistMailTest < ActionDispatch::IntegrationTest
 
     mail = gast_mails.sole
     assert_equal ['tm-gast@example.de'], mail.to
-    assert_includes mail.subject, 'Spieltagsbericht bestätigen'
+    assert_equal "Spieltagsbericht prüfen: #{@game.home_team_name} gegen #{@game.guest_team_name}", mail.subject
+
+    body = mail.html_part ? mail.html_part.decoded : mail.body.decoded
+    assert_includes body, 'Ohne Widerspruch gilt'
+    assert_includes body, 'Zum Spieltagsbericht im Portal'
+    assert_includes body, '/verein/spieltage'
   end
 
   # Der Kern der Kaskade: Gibt es einen Teammanager, bleibt der Verein außen
@@ -305,7 +310,7 @@ class GamesGuestTeamChecklistMailTest < ActionDispatch::IntegrationTest
   private
 
   def gast_mails
-    ActionMailer::Base.deliveries.select { |m| m.subject.to_s.start_with?('Spieltagsbericht bestätigen') }
+    ActionMailer::Base.deliveries.select { |m| m.subject.to_s.start_with?('Spieltagsbericht prüfen') }
   end
 
   def close_match_record_as_admin
