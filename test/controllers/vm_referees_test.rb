@@ -63,6 +63,17 @@ class VmRefereesTest < ActionDispatch::IntegrationTest
     assert_equal([current.id, previous.id], response.parsed_body.map { |g| g['id'] })
   end
 
+  test 'Detail nennt die Einsatzzahlen, die Liste nicht' do
+    game_for(@referee, season_id: '18', date: '2026-10-01')
+
+    get "/api/v2/vm/referees/#{@referee.id}"
+    stats = response.parsed_body['season_game_stats']
+    assert_equal([[18, 1], [17, 0]], stats.map { |s| [s['season_id'], s['games']] })
+
+    get '/api/v2/vm/referees'
+    assert_not response.parsed_body.first.key?('season_game_stats')
+  end
+
   test 'ohne Vereinsmanager-Rolle gesperrt' do
     login(create(:user))
 

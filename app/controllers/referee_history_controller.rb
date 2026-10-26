@@ -31,6 +31,13 @@ class RefereeHistoryController < ApplicationController
     render json: result
   end
 
+  # GET /api/v2/referee/history/season_stats
+  # Einsatzzahlen der laufenden und der Vorsaison, dieselben wie in der
+  # Verbands- und der Vereinssicht (RefereeSeasonGameStats).
+  def season_stats
+    render json: RefereeSeasonGameStats.for(@referee)
+  end
+
   # GET /api/v2/referee/history/partners
   # Eigensicht auf die Gespann-Historie: mit wem der Schiri selbst im Einsatz
   # war. Gleiche Aggregation wie die RSK-/Ansetzer-Variante
