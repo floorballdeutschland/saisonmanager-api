@@ -1,4 +1,4 @@
-<h2>Spieltagsbericht bestätigen</h2>
+<h2>Spieltagsbericht prüfen</h2>
 
 <p>
   Hallo,
@@ -14,20 +14,23 @@
 </p>
 
 <p>
-  Als Gastmannschaft <strong><%= @team.name %></strong> bestätigen Sie den
-  Spieltag als ordnungsgemäß durchgeführt, oder Sie melden ihn als nicht
-  ordnungsgemäß und füllen den Spieltagsbericht selbst aus.
+  Bitte prüfen Sie als Gastmannschaft <strong><%= @team.name %></strong> die
+  Angaben unten. Stimmt alles, ist nichts weiter zu tun: Ohne Widerspruch gilt
+  der Spieltag nach Ablauf der Frist automatisch als bestätigt. Sie können ihn
+  im Portal auch vorher schon als ordnungsgemäß bestätigen. Wurde der Spieltag
+  nicht ordnungsgemäß durchgeführt, widersprechen Sie im Portal und füllen den
+  Spieltagsbericht dann selbst aus.
 </p>
 
 <% if @deadline %>
 <p>
-  <strong>Frist:</strong> bis <%= format_deadline(@deadline) %>.
-  Ohne Rückmeldung gilt der Spieltag danach automatisch als bestätigt.
+  <strong>Frist für einen Widerspruch:</strong> bis <%= format_deadline(@deadline) %>.
+  Danach gilt der Spieltag automatisch als bestätigt.
 </p>
 <% end %>
 
 <p>
-  <a href="<%= @portal_url %>">Zu „Meine Auswärtsspieltage"</a>
+  <a href="<%= @portal_url %>">Zum Spieltagsbericht im Portal</a>
 </p>
 
 <p style="font-size: 0.85em; color: #666;">
@@ -65,8 +68,8 @@
 </table>
 
 <p style="font-size: 0.85em; color: #666;">
-  Trifft eine dieser Angaben nicht zu, melden Sie den Spieltag im Portal als
-  nicht ordnungsgemäß. Die zuständige SBK wird dann informiert.
+  Trifft eine dieser Angaben nicht zu, widersprechen Sie im Portal. Die
+  zuständige SBK wird dann informiert.
 </p>
 
 <hr>

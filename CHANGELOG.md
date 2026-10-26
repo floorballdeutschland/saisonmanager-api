@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Mail an die Gastmannschaft zum Spieltagsbericht spricht vom Widerspruch**: Passend zum Reiter „Spieltagsbericht widersprechen“ unter „Spieltagsaufgaben“ (fe#621) sagt die Mail jetzt, dass ohne Widerspruch nichts zu tun ist und der Spieltag nach Fristablauf automatisch als bestätigt gilt, dass man vorher schon bestätigen kann und wie man widerspricht. Neuer Betreff „Spieltagsbericht prüfen: Heim gegen Gast“ (vorher „Spieltagsbericht bestätigen – … vs. …“), der Link heißt „Zum Spieltagsbericht im Portal“. Eine im Admin-Bereich gepflegte Vorlage für diese Mail geht weiter vor und muss gegebenenfalls von Hand angepasst werden.
+
 ## [2.4.0] - 2026-10-24
 
 ### Neu
