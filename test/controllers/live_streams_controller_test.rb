@@ -395,6 +395,81 @@ class LiveStreamsControllerTest < ActionDispatch::IntegrationTest
     assert_no_match(/public/, response.headers['Cache-Control'])
   end
 
+  # ── Highlights (saisonmanager#612) ──────────────────────────────────────
+
+  test 'has_highlights ist true, wenn GameHighlights eine oeffentliche Szene liefert' do
+    spiel = tablet_spiel(ended: true)
+
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    assert_response :success
+    assert_equal true, eintrag_von(spiel)['has_highlights']
+  end
+
+  # Übertragung und Tablet-Schüsse reichen nicht: Ist die einzige Szene
+  # abgewählt, führte der Button ins Leere.
+  test 'ohne oeffentliche Szene ist has_highlights false' do
+    spiel = tablet_spiel(ended: true)
+    spiel.game_shots.update_all(in_highlights: false)
+
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    assert_equal false, eintrag_von(spiel)['has_highlights']
+  end
+
+  test 'ohne Uebertragung mit bekanntem Start ist has_highlights false' do
+    spiel = tablet_spiel(ended: true)
+    StreamBroadcast.where(game_id: spiel.id).update_all(actual_start_at: nil)
+
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    assert_equal false, eintrag_von(spiel)['has_highlights']
+  end
+
+  # Ohne Tabletmodus wird gar nicht erst gerechnet, auch wenn Übertragung und
+  # verknüpfter Schuss in der Datenbank stehen.
+  test 'ein Spiel ohne Tabletmodus hat nie Highlights' do
+    spiel = tablet_spiel(ended: true)
+    spiel.update_columns(tablet_capture_at: nil)
+
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    assert_response :success
+    assert_equal false, eintrag_value(spiel, 'has_highlights')
+    assert_equal false, eintrag_value(@laufend, 'has_highlights')
+  end
+
+  # Dieselbe Verzögerung wie games/:id/highlights: Ein Schlüssel ohne
+  # Echtzeit-Freigabe sieht den Button erst, wenn die Spielseite ihm die Szene
+  # zeigt. Und zwar unabhängig davon, wer den gemeinsamen Cache gefüllt hat.
+  test 'laufendes Spiel: frische Szene nur mit Echtzeit-Freigabe' do
+    spiel = tablet_spiel(ended: false, tor_vor: 2.minutes)
+    vorher = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    begin
+      get '/api/v2/live_streams', headers: api_key_headers(realtime: true)
+      assert_equal true, eintrag_von(spiel)['has_highlights'], 'Echtzeit sieht die Szene'
+
+      get '/api/v2/live_streams', headers: api_key_headers
+      assert_equal false, eintrag_von(spiel)['has_highlights'], 'verzoegert noch keine Szene'
+
+      get '/api/v2/live_streams', headers: api_key_headers(realtime: true)
+      assert_equal true, eintrag_von(spiel)['has_highlights'], 'der Cache haelt beide Fassungen'
+      assert_not_includes response.body, 'has_highlights_delayed'
+    ensure
+      Rails.cache = vorher
+    end
+  end
+
+  test 'laufendes Spiel: eine Szene vor der Verzoegerung sieht auch der normale Schluessel' do
+    spiel = tablet_spiel(ended: false, tor_vor: 20.minutes)
+
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    assert_equal true, eintrag_von(spiel)['has_highlights']
+    assert_not_includes response.body, 'has_highlights_delayed'
+  end
+
   private
 
   # Ein Spiel vor `tage_zurueck` Tagen, mit eigenem Spieltag. Gerechnet wird vom
@@ -408,5 +483,26 @@ class LiveStreamsControllerTest < ActionDispatch::IntegrationTest
 
   def eintrag_von(game)
     JSON.parse(response.body)['games'].find { |g| g['game_id'] == game.id } || {}
+  end
+
+  # Ein Tablet-Spiel des heutigen Tages mit verlinkter Übertragung und einem
+  # Tor, an dem ein Tablet-Schuss hängt, `tor_vor` vor jetzt.
+  def tablet_spiel(ended:, tor_vor: 30.minutes)
+    start = 1.hour.ago
+    tor = tor_vor.ago
+    spiel = create(:game, game_day: @game_day, home_team: @home, guest_team: @guest,
+                          start_time: '16:00', started: true, ended: ended, tablet_capture_at: start,
+                          live_stream_link: 'https://www.youtube.com/watch?v=vid-hl',
+                          events: [{ 'id' => 1, 'event_type' => 'goal', 'event_team' => 'home', 'period' => 1,
+                                     'time' => '05:00', 'home_goals' => 1, 'guest_goals' => 0,
+                                     'home_number' => 7, 'added_at' => tor.to_i }])
+    StreamBroadcast.create!(broadcast_id: 'vid-hl', game: spiel, actual_start_at: start)
+    GameShot.create!(game: spiel, client_uuid: "hl-#{spiel.id}", team: 'home', period: 1, tapped_at: tor,
+                     x: 0.8, y: 0.5, result: 'goal', event_id: 1)
+    spiel
+  end
+
+  def eintrag_value(game, key)
+    eintrag_von(game).fetch(key)
   end
 end
