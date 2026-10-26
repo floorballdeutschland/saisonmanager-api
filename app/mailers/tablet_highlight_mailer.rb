@@ -18,7 +18,7 @@ class TabletHighlightMailer < ApplicationMailer
 
     mail(
       to: recipient,
-      subject: "Highlights bearbeiten – Spiel #{game.game_number} #{game.home_team_name} – #{game.guest_team_name}"
+      subject: "Kalibrierung erforderlich: Spiel #{game.game_number}, #{game.home_team_name} gegen #{game.guest_team_name}"
     )
   end
 end
