@@ -1,8 +1,13 @@
 <h2>Highlights bearbeiten</h2>
 
 <p>
-  Die Aufzeichnung des Spiels <a href="<%= @game.url %>"><%= @game.game_number %> · <%= @game.home_team_name %> gegen <%= @game.guest_team_name %></a>
-  ist fertig, und die Highlights stehen schon auf der Spielseite.
+  Die ausführliche Statistik zum Spiel <a href="<%= @game.url %>"><%= @game.game_number %> · <%= @game.home_team_name %> gegen <%= @game.guest_team_name %></a>
+  steht ab jetzt bereit. Damit das Videomaterial mit den einzelnen Schüssen sauber synchronisiert ist, musst du
+  eine einzelne Szene kalibrieren. Nur so kann sichergestellt werden, dass der zeitliche Versatz zwischen der
+  Erfassung auf dem Tablet und der Ausstrahlung im Livestream zusammenpasst.
+</p>
+
+<p>
   <% if @fallback %>
     Beim Beenden des Tabletmodus hat niemand den Link zum Bearbeiten angefordert. Du bekommst ihn,
     weil die Szenen am Tablet mit deinem Konto erfasst wurden, entweder direkt oder über einen
@@ -10,11 +15,7 @@
   <% else %>
     Beim Beenden des Tabletmodus wurde für diese Adresse der Link zum Bearbeiten angefordert.
   <% end %>
-</p>
-
-<p>
-  Das Videobild läuft der Halle um 10 bis 30 Sekunden hinterher. Damit jede Szene genau am Tor sitzt,
-  gleichst du das einmal ab. Das dauert etwa zwei Minuten:
+  Das dauert etwa zwei Minuten:
 </p>
 <ol>
   <li>Du bekommst eine Torszene angezeigt. Spiel sie ab und klick einmal in dem Moment, in dem das Tor fällt.
@@ -27,7 +28,7 @@
 </p>
 
 <p>
-  Musst du nicht: Ohne Abgleich bleiben die Highlights sichtbar, die Szenen sind dann nur etwas länger
+  Bis zur Kalibrierung sind die Highlights auf der Spielseite schon sichtbar, die Szenen aber etwas länger
   geschnitten, damit das Tor sicher darin liegt.
 </p>
 
