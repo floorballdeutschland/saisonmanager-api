@@ -33,6 +33,25 @@ class RefereeSeasonGameStats
     previous && new(referee, season_ids: [previous]).to_a.first
   end
 
+  # Spiele einer Saison mit frei gewählter Wertung, für die Regeln des
+  # Lizenzvorschlags (RefereeLicenseSuggestionRule). `field_size` ist `all`,
+  # `KF` oder `GF`; `age_groups` leer heißt alle Altersklassen. Eine Liga ohne
+  # Altersklasse zählt immer mit, wie bei games_gf_u15_plus.
+  def self.count(referee, season_id:, field_size: 'all', age_groups: [])
+    league_ids = referee.games(season_id: season_id.to_s).pluck('leagues.id')
+    leagues = League.unscoped.where(id: league_ids.uniq).index_by(&:id)
+    league_ids.count { |id| league_matches?(leagues[id], field_size, age_groups) }
+  end
+
+  def self.league_matches?(league, field_size, age_groups)
+    return false if league.nil?
+    return false unless field_size == 'all' || league.effective_field_size == field_size
+
+    age = league.effective_age_group
+    age_groups.empty? || age.blank? || age_groups.include?(age)
+  end
+  private_class_method :league_matches?
+
   def initialize(referee, season_ids: nil)
     @referee = referee
     @season_ids = season_ids

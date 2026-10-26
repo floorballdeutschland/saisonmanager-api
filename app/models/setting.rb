@@ -201,6 +201,13 @@ class Setting < ApplicationRecord
     season_name(season_id).to_s[/\d{4}/]&.to_i
   end
 
+  # Die Saison, die im gegebenen Jahr beginnt (2026 → 2026/2027), oder nil.
+  # Über den Namen, weil die IDs kein Jahr tragen; bei zwei Einträgen mit
+  # demselben Jahr gewinnt der jüngere.
+  def self.season_id_starting_in(year)
+    seasons_hash.keys.map(&:to_i).select { |id| season_start_year(id) == year }.max
+  end
+
   # Startjahr der aktiven Saison (2026/2027 → 2026). Maßgeblich überall dort, wo
   # in Lizenzjahren gerechnet wird: Die Lizenzjahre drehen mit dem manuell
   # ausgeführten Saisonwechsel weiter (nominell zum 01.08.), nicht mit dem

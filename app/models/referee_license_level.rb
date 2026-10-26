@@ -7,6 +7,10 @@ class RefereeLicenseLevel < ApplicationRecord
   REGELJAHR_ANCHOR_DAY = 31
   DEFAULT_VALIDITY_YEARS = 1
 
+  # Eine Vorschlagsregel ohne Stufe ist sinnlos; ohne das liefe das Löschen
+  # einer Stufe in den Fremdschlüssel und antwortete mit 500.
+  has_many :referee_license_suggestion_rules, dependent: :destroy
+
   validates :name, presence: true, uniqueness: true
   validates :validity_years, numericality: { only_integer: true, greater_than_or_equal_to: 1 }
 

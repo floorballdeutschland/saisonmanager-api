@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_24_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_26_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1026,6 +1026,19 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_24_100000) do
     t.index ["name"], name: "index_referee_license_levels_on_name", unique: true
   end
 
+  create_table "referee_license_suggestion_rules", force: :cascade do |t|
+    t.string "course_type", null: false
+    t.bigint "referee_license_level_id", null: false
+    t.integer "position", default: 0, null: false
+    t.integer "min_games", comment: "NULL: ohne Bedingung"
+    t.string "field_size", default: "all", null: false, comment: "all | KF | GF"
+    t.string "age_groups", default: [], null: false, comment: "Gezählte Altersklassen (leagues.age_group). Leer: alle.", array: true
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["course_type", "position"], name: "idx_on_course_type_position_05b55a34b8"
+    t.index ["referee_license_level_id"], name: "idx_on_referee_license_level_id_d8da0f8cb3"
+  end
+
   create_table "referee_observation_ratings", force: :cascade do |t|
     t.bigint "referee_observation_id", null: false
     t.bigint "referee_id", null: false
@@ -1454,6 +1467,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_24_100000) do
   add_foreign_key "referee_courses", "state_associations"
   add_foreign_key "referee_courses", "users", column: "created_by_user_id"
   add_foreign_key "referee_feedbacks", "games"
+  add_foreign_key "referee_license_suggestion_rules", "referee_license_levels"
   add_foreign_key "referee_observation_ratings", "referee_observations"
   add_foreign_key "referee_observations", "games"
   add_foreign_key "referee_qualifications", "referee_qualification_types"

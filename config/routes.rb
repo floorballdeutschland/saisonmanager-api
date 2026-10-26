@@ -364,6 +364,7 @@ Rails.application.routes.draw do
         resources :referee_qualification_types, only: %i[index create update destroy]
         resources :referee_tags, only: %i[index create update destroy]
         resources :referee_license_levels, only: %i[index create update destroy]
+        resources :referee_license_suggestion_rules, only: %i[index create update destroy]
         resources :penalty_codes, only: %i[index create update destroy]
         resource :referee_course_settings, only: %i[show update]
         resources :referee_courses, only: %i[index show create update destroy] do
