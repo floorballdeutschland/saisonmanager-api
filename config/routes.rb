@@ -506,7 +506,9 @@ Rails.application.routes.draw do
       end
 
       namespace :vm do
-        resources :referees, only: %i[index]
+        resources :referees, only: %i[index show] do
+          get :games, on: :member
+        end
       end
 
       get 'state_associations', to: 'state_associations#index'

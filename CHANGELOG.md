@@ -9,6 +9,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Vereinsmanager sieht E-Mail, Konto und Einsätze seiner Schiedsrichter**: `GET vm/referees` nennt je Schiedsrichter zusätzlich `email` und `has_user` (verknüpftes Benutzerkonto). Neu sind `GET vm/referees/:id` (dieselben Felder für die lesende Detailansicht) und `GET vm/referees/:id/games` (gesamte Einsatzhistorie laut Spielbericht, auch aus der Zeit bei einem früheren Verein). Erreichbar sind nur die Schiedsrichter, die auch in der Vereinsliste stehen, alle anderen antworten mit 404. Telefonnummer, „kurzfristig mobil", Geburtsdatum und Anschrift bleiben außen vor.
+
+### Behoben
+
+- **Admin-Detail eines Schiedsrichters lieferte dem Vereinsmanager Geburtsdatum und Anschrift**: `GET admin/referees/:id` ist für Vereinsmanager bei den Schiedsrichtern des eigenen Vereins freigegeben und antwortete dabei mit den vollen Stammdaten (Geburtsdatum, Anschrift, E-Mail, Benutzername). Angezeigt hat das keine Seite, abrufbar war es trotzdem. Wer nur als Vereinsmanager Zugriff hat, bekommt jetzt die Listenfelder; Admin, RSK und Ansetzung sehen unverändert alles.
+
 ## [2.4.0] - 2026-10-24
 
 ### Neu
