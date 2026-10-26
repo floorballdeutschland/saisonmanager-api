@@ -385,6 +385,25 @@ class LeaguesControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0, Team.where(league_id: copy.id).count, 'ohne include_teams keine Teams'
   end
 
+  # Die Toleranz in Jahren altert nicht und wandert 1:1 mit, waehrend der
+  # Stichtag um ein Jahr weiterrueckt; die Overage-Grenze rueckt so von selbst mit.
+  test 'admin_copy: female_overage_years wird 1:1 kopiert' do
+    create(:setting)
+    source = create(:league, :previous_season, game_operation: create(:game_operation),
+                                               deadline: Date.new(2013, 1, 1), before_deadline: false,
+                                               female_overage_years: 1)
+
+    login_as create(:user, :admin)
+
+    post "/api/v2/admin/leagues/#{source.id}/copy", as: :json
+    assert_response :created
+
+    copy = League.find(JSON.parse(response.body)['id'])
+    assert_equal 1, copy.female_overage_years
+    assert_equal Date.new(2014, 1, 1), copy.deadline
+    assert_equal Date.new(2013, 1, 1), copy.female_overage_deadline
+  end
+
   test 'admin_copy: include_teams kopiert Teams mit approved=false; nil-deadline bleibt nil' do
     create(:setting)
     go = create(:game_operation)
