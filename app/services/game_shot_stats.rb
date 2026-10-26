@@ -28,9 +28,10 @@
 class GameShotStats
   CACHE_TTL = 1.minute
   # Aufteilung der Tore ohne eigenen Torhüter nach Spielstärke, siehe
-  # GameShotStrength: 6 gegen 5, 6 gegen 4, 6 gegen 3, das schießende Team
-  # selbst in Unterzahl, und unbekannt (Schuss ohne Spielzeit).
-  EXTRA_ATTACKER_BUCKETS = %w[6v5 6v4 6v3 shorthanded unknown].freeze
+  # GameShotStrength: 6 gegen 5, 6 gegen 4, jede andere bekannte Stärke
+  # (6 gegen 3, 5 gegen 4 usw., die genaue steht am Schuss) und unbekannt
+  # (Schuss ohne Spielzeit).
+  EXTRA_ATTACKER_BUCKETS = %w[6v5 6v4 other unknown].freeze
   VARIANTS = %w[realtime delayed].freeze
 
   def self.cache_key(game, variant)
@@ -89,8 +90,9 @@ class GameShotStats
       from_penalty_shot: shot.from_penalty_shot,
       empty_net: shot.empty_net,
       extra_attacker: shot.extra_attacker,
-      # '6v5', '6v4' usw. nur bei `extra_attacker`, nil ohne Kennung oder
-      # ohne bekannte Spielzeit (GameShotStrength).
+      # Feldspieler gegen Feldspieler ('6v5', '5v4' usw.) nur bei
+      # `extra_attacker`, nil ohne Kennung oder ohne bekannte Spielzeit
+      # (GameShotStrength).
       extra_attacker_strength: @strengths[shot.id],
       shooter: @names.ref(shot.team, shot.shooter_player_id)
     }

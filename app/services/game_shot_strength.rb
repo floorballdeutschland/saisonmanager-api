@@ -11,11 +11,17 @@
 # Die Regeln sind die der laufenden Strafen auf der Anzeigetafel
 # (`overlay/penalties.js` im Frontend, fe#463), hier nach Ruby übertragen:
 #
-# - Unterzahl bringen nur `penalty_2`, `penalty_2and2` und `penalty_5`. Die
+# - Unterzahl bringen `penalty_2`, `penalty_2and2` und `penalty_5`. Die
 #   persönliche Strafe über zehn Minuten nicht, sie kommt immer zusammen mit
-#   einer Zeitstrafe, die als eigenes Ereignis daneben steht. Matchstrafen
-#   ebenfalls nicht: Für die Mannschaft zählt nur eine dazu eingetragene
-#   Zeitstrafe.
+#   einer Zeitstrafe, die als eigenes Ereignis daneben steht.
+# - MATCHSTRAFEN (MATCH_PENALTIES: `penalty_ms_full`, `penalty_ms_tech` und
+#   die ausgeblendeten Spielstrafen `penalty_ms1` bis `penalty_ms3`) ziehen
+#   immer eine Bankstrafe 2+2 nach sich, auch wenn die nicht als eigenes
+#   Ereignis im Bericht steht. Sie zählen deshalb ab ihrem Zeitpunkt wie
+#   eine 2+2. Steht beim selben Team im selben Abschnitt zur selben Zeit
+#   zusätzlich eine 2+2 oder (Altdaten) eine 5, ist das diese Bankstrafe:
+#   Dann zählt die Matchstrafe nicht noch einmal, je eingetragener Strafe
+#   wird eine Matchstrafe aufgewogen.
 # - Eine kleine Strafe (auch die erste Hälfte von 2+2) endet, wenn die
 #   Gegenseite IN ÜBERZAHL trifft, und zwar genau eine, die als nächste
 #   ablaufen würde. Die zweite Hälfte von 2+2 läuft ab dem Tor zwei Minuten.
@@ -23,18 +29,12 @@
 # - Gerechnet wird in zeitlicher Reihenfolge, weil jedes Tor vom Zustand nach
 #   den vorherigen Toren abhängt.
 #
-# Daraus die Spielstärke: Je Team zählen höchstens zwei laufende Strafen (mehr
-# Unterzahl gibt es nicht), gleich viele auf beiden Seiten heben sich auf.
-# Übrig bleibt die Unterzahl einer Seite:
-#
-#   '6v5'  Gegner vollzählig
-#   '6v4'  Gegner mit einer Strafe mehr (Torwart raus in Überzahl)
-#   '6v3'  Gegner mit zwei Strafen mehr
-#   '5v5'  schießendes Team selbst mit einer Strafe mehr
-#   '4v5'  schießendes Team selbst mit zwei Strafen mehr
-#
-# Eine Strafe auf jeder Seite plus Torwart raus ist auf dem Feld 5 gegen 4,
-# zählt hier aber wie 6 gegen 5: ein Feldspieler mehr, aus demselben Grund.
+# Daraus die Spielstärke als das, was auf dem Feld steht: Feldspieler des
+# schießenden Teams (6 abzüglich seiner laufenden Strafen) gegen die des
+# Gegners (5 abzüglich dessen Strafen). Je Team zählen höchstens zwei Strafen,
+# mehr Unterzahl gibt es nicht. Strafen beider Teams heben sich dabei NICHT
+# auf: Eine Strafe auf jeder Seite plus Torwart raus ist '5v4', nicht '6v5'.
+# Möglich sind '6v5', '6v4', '6v3', '5v5', '5v4', '5v3', '4v5', '4v4', '4v3'.
 #
 # ZEITPUNKT: Hängt der Schuss an einem Tor des Spielberichts (`event_id`),
 # gilt dessen Abschnitt und Zeit, sonst Abschnitt und Spielzeit am Schuss.
@@ -56,6 +56,11 @@
 class GameShotStrength
   # Dauer in Sekunden je Strafart, nur Arten mit Unterzahl.
   DURATION = { 'penalty_2' => 120, 'penalty_2and2' => 240, 'penalty_5' => 300 }.freeze
+  # Alle Matchstrafen des Katalogs (Setting#penalties), zählen wie eine 2+2.
+  MATCH_PENALTIES = %w[penalty_ms_full penalty_ms_tech penalty_ms1 penalty_ms2 penalty_ms3].freeze
+  MATCH_BENCH_PENALTY = 'penalty_2and2'
+  # Eingetragene Strafen, die als Bankstrafe einer Matchstrafe gelten.
+  MATCH_BENCH_EQUIVALENTS = %w[penalty_2and2 penalty_5].freeze
   # Diese enden vorzeitig bei einem Überzahltor.
   MINOR = %w[penalty_2 penalty_2and2].freeze
   MINOR_PART = 120
@@ -64,9 +69,10 @@ class GameShotStrength
   # hinüberläuft.
   PERIOD_GAP = 100_000
 
-  # Die Gruppen der Summen in GameShotStats, je Spielstärke.
-  BUCKETS = { '6v5' => '6v5', '6v4' => '6v4', '6v3' => '6v3', '5v5' => 'shorthanded',
-              '4v5' => 'shorthanded' }.freeze
+  # Die Gruppen der Summen in GameShotStats: die zwei häufigen Fälle einzeln,
+  # alle übrigen bekannten Stärken als 'other', ohne Zeitpunkt 'unknown'.
+  BUCKETS = %w[6v5 6v4].freeze
+  OTHER = 'other'
   UNKNOWN = 'unknown'
 
   def initialize(game)
@@ -76,7 +82,7 @@ class GameShotStrength
     @regular_periods = league&.period_count_normal_game
     events = game.formatted_events
     @events_by_id = events.index_by { |event| event[:event_id].to_s }
-    @penalties = events.filter_map { |event| penalty(event) }
+    @penalties = penalties(events)
     @goals = events.filter_map { |event| goal(event) }.sort_by { |goal| goal[:at] }
   end
 
@@ -90,13 +96,14 @@ class GameShotStrength
     running = running_at(at)
     own = [running.count { |strafe| strafe[:team] == shot.team }, MAX_SHORT].min
     opponent = [running.count { |strafe| strafe[:team] != shot.team }, MAX_SHORT].min
-    both = [own, opponent].min
-    "#{6 - (own - both)}v#{5 - (opponent - both)}"
+    "#{6 - own}v#{5 - opponent}"
   end
 
-  # Gruppe für die Summen: '6v5', '6v4', '6v3', 'shorthanded' oder 'unknown'.
+  # Gruppe für die Summen: '6v5', '6v4', 'other' oder 'unknown'.
   def self.bucket(strength)
-    BUCKETS.fetch(strength.to_s, UNKNOWN)
+    return UNKNOWN if strength.nil?
+
+    BUCKETS.include?(strength) ? strength : OTHER
   end
 
   private
@@ -108,14 +115,37 @@ class GameShotStrength
     absolute(shot.period, shot.game_time)
   end
 
-  def penalty(event)
-    return nil unless event[:event_type] == :penalty
+  # Strafen mit Unterzahl; Matchstrafen als 2+2, sofern ihre Bankstrafe nicht
+  # schon eingetragen ist (siehe Klassenkommentar).
+  def penalties(events)
+    strafen = events.select { |event| event[:event_type] == :penalty }
+    bankstrafen = strafen.select { |event| MATCH_BENCH_EQUIVALENTS.include?(event[:penalty_type].to_s) }
+                         .map { |event| moment(event) }.tally
+    strafen.filter_map do |event|
+      type = event[:penalty_type].to_s
+      if MATCH_PENALTIES.include?(type)
+        key = moment(event)
+        if bankstrafen[key].to_i.positive?
+          bankstrafen[key] -= 1
+          next
+        end
+        type = MATCH_BENCH_PENALTY
+      end
+      penalty(event, type)
+    end
+  end
 
-    duration = DURATION[event[:penalty_type].to_s]
+  # Team, Abschnitt und Zeit wie eingetragen.
+  def moment(event)
+    [event[:event_team].to_s, event[:period].to_i, event[:time].to_s.strip]
+  end
+
+  def penalty(event, type)
+    duration = DURATION[type]
     start = absolute(event[:period], event[:time])
     return nil if duration.nil? || start.nil?
 
-    minor = MINOR.include?(event[:penalty_type].to_s)
+    minor = MINOR.include?(type)
     parts = minor ? duration / MINOR_PART : 1
     { team: event[:event_team].to_s, start: start, end: start + duration, minor: minor, parts: parts,
       part_length: minor ? MINOR_PART : duration }

@@ -50,9 +50,11 @@ class GameShotStrengthTest < ActiveSupport::TestCase
     assert_equal '4v5', staerke([strafe('home', '4:00'), strafe('home', '4:30')], schuss('5:00'))
   end
 
-  test 'Strafen beider Teams heben sich auf' do
-    assert_equal '6v5', staerke([strafe('home', '4:00'), strafe('guest', '4:00')], schuss('5:00'))
-    assert_equal '6v4', staerke([strafe('home', '4:00'), strafe('guest', '4:00'), strafe('guest', '4:30')],
+  test 'Strafen beider Teams heben sich nicht auf, gezählt wird, was auf dem Feld steht' do
+    assert_equal '5v4', staerke([strafe('home', '4:00'), strafe('guest', '4:00')], schuss('5:00'))
+    assert_equal '5v3', staerke([strafe('home', '4:00'), strafe('guest', '4:00'), strafe('guest', '4:30')],
+                                schuss('5:00'))
+    assert_equal '4v4', staerke([strafe('home', '4:00'), strafe('home', '4:10'), strafe('guest', '4:20')],
                                 schuss('5:00'))
   end
 
@@ -63,7 +65,7 @@ class GameShotStrengthTest < ActiveSupport::TestCase
   test 'ein Tor bei gleicher Zahl beendet keine Strafe' do
     ereignisse = [strafe('home', '4:00'), strafe('guest', '4:00'), tor('home', '4:20'), strafe('guest', '4:40')]
 
-    assert_equal '6v4', staerke(ereignisse, schuss('5:00'))
+    assert_equal '5v3', staerke(ereignisse, schuss('5:00'))
   end
 
   test 'ein Überzahltor beendet nur die Strafe, die als nächste abliefe' do
@@ -84,10 +86,41 @@ class GameShotStrengthTest < ActiveSupport::TestCase
     assert_equal '6v5', staerke(ereignisse, schuss('6:40'))
   end
 
-  test 'fünf Minuten enden nicht beim Tor, zehn Minuten und Matchstrafe bringen keine Unterzahl' do
+  test 'fünf Minuten enden nicht beim Tor, zehn Minuten bringen keine Unterzahl' do
     assert_equal '6v4', staerke([strafe('guest', '4:00', 'penalty_5'), tor('home', '4:30')], schuss('8:00'))
     assert_equal '6v5', staerke([strafe('guest', '4:00', 'penalty_10')], schuss('5:00'))
-    assert_equal '6v5', staerke([strafe('guest', '4:00', 'penalty_ms_full')], schuss('5:00'))
+  end
+
+  test 'jede Matchstrafe zählt wie eine Bankstrafe 2+2, auch ohne eingetragene' do
+    %w[penalty_ms_full penalty_ms_tech penalty_ms1 penalty_ms2 penalty_ms3].each do |mapping|
+      assert_equal '6v4', staerke([strafe('guest', '4:00', mapping)], schuss('7:59')), mapping
+      assert_equal '6v5', staerke([strafe('guest', '4:00', mapping)], schuss('8:00')), mapping
+    end
+  end
+
+  test 'Matchstrafe endet wie 2+2: das Überzahltor beendet die erste Hälfte' do
+    ereignisse = [strafe('guest', '4:00', 'penalty_ms_full'), tor('home', '4:30')]
+
+    assert_equal '6v4', staerke(ereignisse, schuss('6:20'))
+    assert_equal '6v5', staerke(ereignisse, schuss('6:40'))
+  end
+
+  test 'eingetragene Bankstrafe zur selben Zeit zählt nicht doppelt' do
+    mit_bankstrafe = [strafe('guest', '4:00', 'penalty_ms_full'), strafe('guest', '4:00', 'penalty_2and2')]
+    assert_equal '6v4', staerke(mit_bankstrafe, schuss('5:00'))
+
+    altdaten = [strafe('guest', '4:00', 'penalty_ms2'), strafe('guest', '4:00', 'penalty_5')]
+    assert_equal '6v4', staerke(altdaten, schuss('5:00'))
+    assert_equal '6v4', staerke(altdaten, schuss('8:30')), 'die eingetragenen fünf Minuten laufen ganz ab'
+
+    andere_zeit = [strafe('guest', '4:00', 'penalty_ms_full'), strafe('guest', '4:30', 'penalty_2and2')]
+    assert_equal '6v3', staerke(andere_zeit, schuss('5:00'))
+
+    anderes_team = [strafe('guest', '4:00', 'penalty_ms_full'), strafe('home', '4:00', 'penalty_2and2')]
+    assert_equal '5v4', staerke(anderes_team, schuss('5:00'))
+
+    zwei_minuten = [strafe('guest', '4:00', 'penalty_ms_full'), strafe('guest', '4:00', 'penalty_2')]
+    assert_equal '6v3', staerke(zwei_minuten, schuss('5:00')), 'eine kleine Strafe ist nicht die Bankstrafe'
   end
 
   test 'das Tor des Schusses selbst beendet die Strafe nicht vorher' do
@@ -125,9 +158,11 @@ class GameShotStrengthTest < ActiveSupport::TestCase
   end
 
   test 'Gruppen für die Summen' do
+    assert_equal '6v5', GameShotStrength.bucket('6v5')
     assert_equal '6v4', GameShotStrength.bucket('6v4')
-    assert_equal 'shorthanded', GameShotStrength.bucket('5v5')
-    assert_equal 'shorthanded', GameShotStrength.bucket('4v5')
+    assert_equal 'other', GameShotStrength.bucket('6v3')
+    assert_equal 'other', GameShotStrength.bucket('5v4')
+    assert_equal 'other', GameShotStrength.bucket('4v5')
     assert_equal 'unknown', GameShotStrength.bucket(nil)
   end
 

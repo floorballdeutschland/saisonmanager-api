@@ -646,13 +646,16 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     aufstellung!
     @game.update!(ended: true, events: [
       { 'id' => 1, 'period' => 3, 'time' => '10:00', 'event_team' => 'guest', 'guest_number' => 1,
+        'penalty_id' => '1', 'penalty_code_id' => '1', 'penalty_mapping' => 'penalty_2' },
+      { 'id' => 2, 'period' => 3, 'time' => '11:20', 'event_team' => 'home', 'home_number' => 7,
         'penalty_id' => '1', 'penalty_code_id' => '1', 'penalty_mapping' => 'penalty_2' }
     ])
     post_shots([
       shot('a', result: 'goal', extra_attacker: true, period: 3, game_time: '9:00'),
       shot('b', result: 'goal', extra_attacker: true, period: 3, game_time: '11:00', at: @t0 + 5),
       shot('c', result: 'goal', extra_attacker: true, period: 3, game_time: nil, at: @t0 + 10),
-      shot('d', result: 'saved', extra_attacker: true, period: 3, game_time: '11:30', at: @t0 + 15)
+      shot('d', result: 'saved', extra_attacker: true, period: 3, game_time: '11:30', at: @t0 + 15),
+      shot('e', result: 'goal', extra_attacker: true, period: 3, game_time: '11:40', at: @t0 + 20)
     ])
     assert_response :success
 
@@ -660,11 +663,10 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     stats = response.parsed_body
-    assert_equal ['6v5', '6v4', nil, '6v4'], stats['shots'].pluck('extra_attacker_strength'),
+    assert_equal ['6v5', '6v4', nil, '5v4', '5v4'], stats['shots'].pluck('extra_attacker_strength'),
                  'ohne Spielzeit unbekannt, auch ein gehaltener Schuss trägt die Stärke'
-    erwartet = { 'goals_extra_attacker' => 3, 'goals_extra_attacker_6v5' => 1, 'goals_extra_attacker_6v4' => 1,
-                 'goals_extra_attacker_6v3' => 0, 'goals_extra_attacker_shorthanded' => 0,
-                 'goals_extra_attacker_unknown' => 1 }
+    erwartet = { 'goals_extra_attacker' => 4, 'goals_extra_attacker_6v5' => 1, 'goals_extra_attacker_6v4' => 1,
+                 'goals_extra_attacker_other' => 1, 'goals_extra_attacker_unknown' => 1 }
     assert_equal erwartet, stats['teams']['home'].slice(*erwartet.keys)
     assert_equal erwartet, stats['teams']['home']['by_period']['3'].slice(*erwartet.keys)
     assert_equal 0, stats['teams']['guest']['goals_extra_attacker_6v4']
@@ -798,7 +800,7 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
   private
 
   def ohne_torhueter_null
-    %w[6v5 6v4 6v3 shorthanded unknown].to_h { |gruppe| ["goals_extra_attacker_#{gruppe}", 0] }
+    %w[6v5 6v4 other unknown].to_h { |gruppe| ["goals_extra_attacker_#{gruppe}", 0] }
   end
 
   def build_game(game_day)
