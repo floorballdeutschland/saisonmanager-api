@@ -11,6 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Neu
 
+- **Einsatzzahlen der Schiedsrichter für laufende Saison und Vorsaison**: Je Saison einmal alle Spiele und einmal nur Großfeld ab U15, damit die Lizenzerteilung nachvollziehbar ist. Dieselben Zahlen stehen in jeder Sicht: `GET admin/referees/:id` und `GET vm/referees/:id` nennen `season_game_stats`, für den Schiedsrichter selbst gibt es `GET referee/history/season_stats`. Gezählt wird wie in der Einsatzhistorie laut Spielbericht, nicht laut Ansetzung. Großfeld ab U15 heißt Feldgröße GF und keine Altersklasse unter U15; Playoff- und Endrundenligen ohne eigene Angaben erben sie von der Hauptrunde, eine GF-Liga ohne Altersklasse zählt mit. Die Vorsaison ist die nächstkleinere Saison in den Einstellungen (`Setting.previous_season_id`); beide hängen allein an der aktiven Saison, der manuelle Saisonwechsel schiebt sie also ohne weiteres Zutun weiter.
 - **Vereinsmanager sieht E-Mail, Konto und Einsätze seiner Schiedsrichter**: `GET vm/referees` nennt je Schiedsrichter zusätzlich `email` und `has_user` (verknüpftes Benutzerkonto). Neu sind `GET vm/referees/:id` (dieselben Felder für die lesende Detailansicht) und `GET vm/referees/:id/games` (gesamte Einsatzhistorie laut Spielbericht, auch aus der Zeit bei einem früheren Verein). Erreichbar sind nur die Schiedsrichter, die auch in der Vereinsliste stehen, alle anderen antworten mit 404. Telefonnummer, „kurzfristig mobil", Geburtsdatum und Anschrift bleiben außen vor.
 
 ### Behoben

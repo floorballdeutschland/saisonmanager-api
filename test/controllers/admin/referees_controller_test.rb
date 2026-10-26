@@ -580,6 +580,18 @@ module Admin
       assert response.parsed_body.key?('geburtsdatum')
     end
 
+    test 'Admin-Detail nennt die Einsatzzahlen der laufenden und der Vorsaison' do
+      referee = create(:referee, club_id: create(:club).id)
+      partner_game([referee.id], season_id: '17')
+      login(@admin)
+
+      get "/api/v2/admin/referees/#{referee.id}"
+
+      assert_response :success
+      stats = response.parsed_body['season_game_stats']
+      assert_equal([[18, 0], [17, 1]], stats.map { |s| [s['season_id'], s['games']] })
+    end
+
     # Ein Gast traegt keine Lizenznummer. Das Anlageformular belegt das Feld
     # aber mit der naechsten freien Nummer vor und blendet es beim Haken "Gast"
     # nur aus -- der Wert kam also mit. Der Gast belegte damit eine Nummer, die

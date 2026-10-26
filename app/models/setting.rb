@@ -256,6 +256,15 @@ class Setting < ApplicationRecord
     current.systems['1']['current_season_id']
   end
 
+  # Die Saison vor der laufenden: der nächstkleinere Schlüssel in seasons, nicht
+  # `current_season_id - 1`. Die IDs laufen zwar fortlaufend, aber eine schon
+  # angelegte kommende Saison oder eine Lücke im Bestand soll hier nichts
+  # verschieben. nil, wenn es keine frühere Saison gibt.
+  def self.previous_season_id
+    active = current_season_id.to_i
+    seasons_hash.keys.map(&:to_i).select { |id| id < active }.max
+  end
+
   def self.current_min_league
     current_season['min_league_id'] || 0
   end

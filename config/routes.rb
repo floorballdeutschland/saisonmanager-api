@@ -279,6 +279,7 @@ Rails.application.routes.draw do
       get 'referee/history/games', to: 'referee_history#games'
       get 'referee/history/tests', to: 'referee_history#tests'
       get 'referee/history/partners', to: 'referee_history#partners'
+      get 'referee/history/season_stats', to: 'referee_history#season_stats'
 
       # Beobachtungsbögen des Schiedsrichtercoaches. Dasselbe Konto in zwei
       # Rollen: als Coach schreiben, als beobachtete Person lesen.
