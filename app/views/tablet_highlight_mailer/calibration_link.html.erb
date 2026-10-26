@@ -1,34 +1,45 @@
 <h2>Highlights bearbeiten</h2>
 
 <p>
-  Die Aufzeichnung des Spiels <%= @game.game_number %> · <%= @game.home_team_name %> – <%= @game.guest_team_name %>
-  ist fertig.
+  Die Aufzeichnung des Spiels <a href="<%= @game.url %>"><%= @game.game_number %> · <%= @game.home_team_name %> gegen <%= @game.guest_team_name %></a>
+  ist fertig, und die Highlights stehen schon auf der Spielseite.
   <% if @fallback %>
-    Beim Beenden des Tabletmodus hat niemand den Link zum Bearbeiten der Highlights angefordert. Du bekommst ihn,
+    Beim Beenden des Tabletmodus hat niemand den Link zum Bearbeiten angefordert. Du bekommst ihn,
     weil die Szenen am Tablet mit deinem Konto erfasst wurden, entweder direkt oder über einen
     Spielsekretariats-Link, den du ausgestellt hast.
   <% else %>
-    Du hast beim Beenden des Tabletmodus darum gebeten, die Highlights danach selbst zu bearbeiten.
+    Beim Beenden des Tabletmodus wurde für diese Adresse der Link zum Bearbeiten angefordert.
   <% end %>
 </p>
 
-<p>Über den Link kannst du</p>
-<ul>
-  <li>den Versatz zwischen Halle und Videobild einstellen, damit Szenen und Sprungmarken genau sitzen, und</li>
-  <li>auswählen, welche Tore und vorgemerkten Szenen in den Highlights erscheinen.</li>
-</ul>
+<p>
+  Das Videobild läuft der Halle um 10 bis 30 Sekunden hinterher. Damit jede Szene genau am Tor sitzt,
+  gleichst du das einmal ab. Das dauert etwa zwei Minuten:
+</p>
+<ol>
+  <li>Du bekommst eine Torszene angezeigt. Spiel sie ab und klick einmal in dem Moment, in dem das Tor fällt.
+    Daraus ergibt sich die Verschiebung für alle Szenen und für die Sprungmarken im YouTube-Video.</li>
+  <li>Wenn du magst, wählst du noch aus, welche Tore und vorgemerkten Szenen in den Highlights erscheinen.</li>
+</ol>
 
 <p>
   <a href="<%= @url %>" style="display:inline-block;padding:8px 16px;background:#1a56db;color:#fff;text-decoration:none;border-radius:4px;">Highlights bearbeiten</a>
 </p>
 
 <p>
+  Musst du nicht: Ohne Abgleich bleiben die Highlights sichtbar, die Szenen sind dann nur etwas länger
+  geschnitten, damit das Tor sicher darin liegt.
+</p>
+
+<p>
   Der Link gilt bis <%= @expires_at.in_time_zone('Europe/Berlin').strftime('%d.%m.%Y %H:%M') %> Uhr.
   <% if @fallback %>
-    Gib ihn bitte nicht weiter, außer an die Person, die über deinen Spielsekretariats-Link am Tablet saß:
+    Diese Mail geht nicht an den Verein, sondern nur an die Konten, mit denen am Tablet erfasst wurde.
+    Gib den Link bitte nicht weiter, außer an die Person, die über deinen Spielsekretariats-Link am Tablet saß.
     Wer ihn hat, kann die Auswahl ändern.
   <% else %>
-    Gib ihn bitte nicht weiter: Wer ihn hat, kann die Auswahl ändern.
+    Diese Mail geht nicht an den Verein, sondern nur an die Adresse, für die der Link angefordert wurde.
+    Gib ihn bitte nicht weiter, denn wer ihn hat, kann die Auswahl ändern.
   <% end %>
   Die SBK kann die Auswahl auch danach noch korrigieren.
 </p>

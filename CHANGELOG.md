@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Mail zum Bearbeiten der Highlights verständlicher**: Die Mail erklärt jetzt, warum abgeglichen wird (das Videobild läuft der Halle 10 bis 30 Sekunden hinterher) und dass dafür ein Klick beim Tor in einer angezeigten Szene reicht, nennt den Zeitaufwand, sagt, dass die Highlights auch ohne Abgleich sichtbar bleiben, verlinkt die Spielseite und sagt, an wen die Mail geht (nur an die angeforderte Adresse bzw. die Konten, mit denen am Tablet erfasst wurde, nicht an den Verein). Betreff ohne Gedankenstriche: „Highlights bearbeiten: Spiel 101, Heim gegen Gast“.
+
 ## [2.4.0] - 2026-10-24
 
 ### Neu
