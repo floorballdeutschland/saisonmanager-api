@@ -31,6 +31,7 @@ class TabletHighlightMailerTest < ActionMailer::TestCase
     assert_includes body, @game.url
     assert_includes body, 'klick einmal in dem Moment, in dem das Tor fällt'
     assert_includes body, 'eine einzelne Szene kalibrieren'
+    assert_includes body, '>Jetzt kalibrieren</a>'
     assert_includes body, 'nur an die Adresse, für die der Link angefordert wurde'
     assert_includes body, '07.11.2026 18:30 Uhr'
     assert_not_includes body, 'Spielsekretariats-Link'
