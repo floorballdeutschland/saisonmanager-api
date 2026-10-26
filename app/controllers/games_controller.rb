@@ -893,9 +893,13 @@ class GamesController < ApplicationController
       game.record_updated_by = author_user_id
 
       if game.save
-        # Ist aus dem Tor eine Strafe geworden oder hat es das Team gewechselt,
-        # passt der verknüpfte Schuss nicht mehr.
-        GameShotLinker.unlink_event(game, event['id']) if event['event_type'] != 'goal' || event['event_team'] != alt_team
+        # Ist aus dem Tor eine Strafe, ein Eigentor oder ein technisches Tor
+        # geworden oder hat es das Team gewechselt, passt der verknüpfte Schuss
+        # nicht mehr.
+        if event['event_type'] != 'goal' || event['event_team'] != alt_team ||
+           GameShotLinker.event_without_shot?(game, event['id'])
+          GameShotLinker.unlink_event(game, event['id'])
+        end
         render json: game.formatted_events
       else
         render json: { message: game.errors }, status: :unprocessable_entity

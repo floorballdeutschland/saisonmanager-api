@@ -16,10 +16,30 @@
 # Wichtigere. Er wird gemeldet, nicht geworfen.
 #
 # Freischläge (fe#589) werden nie gepaart, auch nicht über #link.
+#
+# Eigentore und technische Tore auch nicht: Ein Eigentor schießt niemand aufs
+# gegnerische Tor (ein abgefälschter Schuss ist kein Eigentor, sondern ein Tor
+# des Schützen), ein technisches Tor wird zugesprochen. Ein Tor-Schuss, der an
+# einem davon hinge, gehörte zu einem anderen Tor und fehlte diesem dann in
+# Highlights und Sprungmarken.
 module GameShotLinker
   module_function
 
+  GOAL_TYPES_WITHOUT_SHOT = %i[owngoal technical].freeze
+
+  # `event` in der Form von Game#formatted_events.
+  def without_shot?(event)
+    GOAL_TYPES_WITHOUT_SHOT.include?(event&.dig(:goal_type))
+  end
+
+  # Wie #without_shot?, für ein Tor über seine id in games.events.
+  def event_without_shot?(game, event_id)
+    without_shot?(game.formatted_events.find { |event| event[:event_id].to_i == event_id.to_i })
+  end
+
   def link_new_goal(game, event)
+    return nil if event_without_shot?(game, event[:id])
+
     team = event[:event_team].to_s
     periode = event[:period].to_i
     kandidaten = game.game_shots.shots.where(team: team, period: periode, result: 'goal', event_id: nil).to_a
@@ -42,7 +62,7 @@ module GameShotLinker
     return if offen.empty?
 
     vergeben = game.game_shots.linked.pluck(:event_id).to_set
-    tore = game.formatted_events.select { |event| event[:event_type] == :goal }
+    tore = game.formatted_events.select { |event| event[:event_type] == :goal && !without_shot?(event) }
     offen.sort_by(&:tapped_at).each do |shot|
       kandidaten = tore.select do |tor|
         !vergeben.include?(tor[:event_id].to_i) && tor[:event_team].to_s == shot.team &&

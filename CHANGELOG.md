@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Tablet-Schüsse hängen nicht mehr an Eigentoren oder technischen Toren**: Die Verknüpfung von Tor und Tablet-Schuss sah nicht auf die Torart. Ein nach einem Verbindungsabbruch nachgereichter Tor-Schuss konnte so an einem zeitlich näheren Eigentor oder technischen Tor landen, das echte Tor blieb ohne Schuss und ohne Highlight-Szene. Beim Eintragen, beim Nachreichen, beim Zuordnen von Hand (`shots/:client_uuid/link`) und im Highlight-Editor sind beide Torarten jetzt ausgenommen; der Editor listet sie nicht mehr unter `goals`, und wird ein Tor nachträglich zum Eigentor oder technischen Tor, löst sich sein Schuss. Ein abgefälschter Schuss ist kein Eigentor, sondern ein Tor des Schützen.
+
 ## [2.4.0] - 2026-10-24
 
 ### Neu

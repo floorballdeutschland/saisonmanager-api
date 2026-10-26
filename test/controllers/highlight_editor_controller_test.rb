@@ -275,6 +275,28 @@ class HighlightEditorControllerTest < ActionDispatch::IntegrationTest
                  GameShot.where(client_uuid: %w[s1 s2 s3]).to_h { |s| [s.client_uuid, s.event_id] })
   end
 
+  test 'Eigentore und technische Tore stehen nicht zur Wahl und nehmen keinen Schuss an' do
+    zwei_tore_und_ein_fehltipper
+    events = @game.events + [
+      { 'id' => 4, 'event_type' => 'goal', 'event_team' => 'home', 'period' => 1, 'time' => '17:00',
+        'home_goals' => 3, 'guest_goals' => 1, 'home_number' => 1000 },
+      { 'id' => 5, 'event_type' => 'goal', 'event_team' => 'home', 'period' => 1, 'time' => '18:00',
+        'home_goals' => 4, 'guest_goals' => 1, 'home_number' => 7, 'goal_type' => 'technical' }
+    ]
+    @game.update_columns(events: events)
+    token = gesendeter_token
+
+    get "/api/v2/highlight_editor.json?token=#{token}"
+    assert_equal [1, 2, 3], response.parsed_body['goals'].pluck('event_id')
+
+    [4, 5].each do |event_id|
+      put "/api/v2/highlight_editor.json?token=#{token}",
+          params: { assignments: [{ client_uuid: 's3', event_id: event_id }] }, as: :json
+      assert_response :unprocessable_entity
+    end
+    assert_nil GameShot.find_by(client_uuid: 's3').event_id
+  end
+
   # --- Admin und SBK -------------------------------------------------------------
 
   test 'SBK des Spielbetriebs korrigiert ohne Link, mit Konto vermerkt' do

@@ -200,6 +200,7 @@ class GameShotsController < ApplicationController
   def link_error(event_id)
     return 'Nur ein Tor-Schuss kann mit einem Tor verknüpft werden.' unless @shot.shot? && @shot.result == 'goal'
     return 'Tor nicht gefunden.' if goal_event(event_id).nil?
+    return 'Eigentore und technische Tore haben keinen Schuss.' if GameShotLinker.without_shot?(goal_event(event_id))
 
     team_mismatch(event_id)
   end
