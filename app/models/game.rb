@@ -2224,6 +2224,9 @@ class Game < ApplicationRecord
 
   def flush_league_caches
     flush_player_stats_caches
+    # Die ausführliche Statistik liest die Strafen des Spielberichts für die
+    # Spielstärke bei Torwart raus (GameShotStrength, fe#610).
+    GameShotStats.flush!(self) if saved_change_to_events?
 
     league_id = game_day&.league_id
     return if league_id.blank?
