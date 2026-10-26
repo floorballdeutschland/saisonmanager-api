@@ -16,10 +16,34 @@
 # Wichtigere. Er wird gemeldet, nicht geworfen.
 #
 # Freischläge (fe#589) werden nie gepaart, auch nicht über #link.
+#
+# Eigentore und technische Tore auch nicht: Ein Eigentor schießt niemand aufs
+# gegnerische Tor (ein abgefälschter Schuss ist kein Eigentor, sondern ein Tor
+# des Schützen), ein technisches Tor wird zugesprochen. Ein Tor-Schuss, der an
+# einem davon hinge, gehörte zu einem anderen Tor und fehlte diesem dann in
+# Highlights und Sprungmarken.
+#
+# Das technische Tor wird an der Markierung des Roh-Ereignisses erkannt
+# (formatted_events[:technical_goal]), nicht an [:goal_type]: Dort verdrängt
+# die Pseudo-Nummer 2000 („nicht angegeben") die Torart, ein solches
+# technisches Tor erschiene als :not_assigned und bliebe verknüpfbar.
 module GameShotLinker
   module_function
 
+  # ids (Integer) der Tore, an die kein Schuss gehört. `formatted` lässt sich
+  # mitgeben, wenn der Aufrufer Game#formatted_events schon berechnet hat.
+  def event_ids_without_shot(game, formatted = game.formatted_events)
+    formatted.select { |event| event[:goal_type] == :owngoal || event[:technical_goal] }
+             .to_set { |event| event[:event_id].to_i }
+  end
+
+  def event_without_shot?(game, event_id)
+    event_ids_without_shot(game).include?(event_id.to_i)
+  end
+
   def link_new_goal(game, event)
+    return nil if event_without_shot?(game, event[:id])
+
     team = event[:event_team].to_s
     periode = event[:period].to_i
     kandidaten = game.game_shots.shots.where(team: team, period: periode, result: 'goal', event_id: nil).to_a
@@ -42,7 +66,9 @@ module GameShotLinker
     return if offen.empty?
 
     vergeben = game.game_shots.linked.pluck(:event_id).to_set
-    tore = game.formatted_events.select { |event| event[:event_type] == :goal }
+    formatted = game.formatted_events
+    ohne_schuss = event_ids_without_shot(game, formatted)
+    tore = formatted.select { |event| event[:event_type] == :goal && !ohne_schuss.include?(event[:event_id].to_i) }
     offen.sort_by(&:tapped_at).each do |shot|
       kandidaten = tore.select do |tor|
         !vergeben.include?(tor[:event_id].to_i) && tor[:event_team].to_s == shot.team &&
