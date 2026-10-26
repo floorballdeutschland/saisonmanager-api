@@ -18,6 +18,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Admin-Detail eines Schiedsrichters lieferte dem Vereinsmanager Geburtsdatum und Anschrift**: `GET admin/referees/:id` ist für Vereinsmanager bei den Schiedsrichtern des eigenen Vereins freigegeben und antwortete dabei mit den vollen Stammdaten (Geburtsdatum, Anschrift, E-Mail, Benutzername). Angezeigt hat das keine Seite, abrufbar war es trotzdem. Wer nur als Vereinsmanager Zugriff hat, bekommt jetzt die Listenfelder; Admin, RSK und Ansetzung sehen unverändert alles.
 
+### Verbessert
+
+- **Kursimport: Vorsaison gesamt und Großfeld ab U15**: Die Spalte „Vorsaison" der Prüfmaske nennt neben `previous_season_game_count` (jetzt alle Spiele) zusätzlich `previous_season_game_count_gf_u15_plus`. Die zweite Zahl entscheidet nach einem F-Kurs über L1 (mindestens vier Spiele) oder L2. Bisher stand dort nur eine Zahl, gefiltert nach Altersklasse, aber ohne Großfeld, also für genau diese Entscheidung die falsche. Gezählt wird wie in den Einsatzzahlen der Schiedsrichter (`RefereeSeasonGameStats`), die Vorsaison ist die nächstkleinere Saison statt `current_season_id - 1`.
+
 ## [2.4.0] - 2026-10-24
 
 ### Neu

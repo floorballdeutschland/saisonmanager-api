@@ -2,7 +2,8 @@
 # je einmal über alle Spiele und einmal nur Großfeld ab U15. Grundlage für die
 # Lizenzerteilung, deshalb dieselbe Zahl in jeder Sicht: Verein (vm/referees/:id),
 # Verband (admin/referees/:id) und der Schiedsrichter selbst
-# (referee/history/season_stats).
+# (referee/history/season_stats). Die Prüfmaske des Kursimports zeigt die
+# Vorsaison daraus (previous_season).
 #
 # Gezählt wird über Referee#games, also laut Spielbericht und nicht laut
 # Ansetzung, mit denselben Fallbacks auf Lizenznummer und Freitext wie die
@@ -24,13 +25,22 @@ class RefereeSeasonGameStats
     new(referee).to_a
   end
 
-  def initialize(referee)
+  # Nur die Vorsaison, oder nil, wenn es keine gibt. Für die Prüfmaske des
+  # Kursimports: Nach einem F-Kurs gibt es L1 statt L2 nur mit mindestens vier
+  # Spielen Großfeld ab U15 in der letzten Saison.
+  def self.previous_season(referee)
+    previous = Setting.previous_season_id
+    previous && new(referee, season_ids: [previous]).to_a.first
+  end
+
+  def initialize(referee, season_ids: nil)
     @referee = referee
+    @season_ids = season_ids
   end
 
   def to_a
     current = Setting.current_season_id.to_i
-    season_ids = [current, Setting.previous_season_id].compact.uniq
+    season_ids = @season_ids || [current, Setting.previous_season_id].compact.uniq
     rows = @referee.games(season_id: season_ids.map(&:to_s)).pluck('leagues.id', 'leagues.season_id')
     leagues = League.unscoped.where(id: rows.map(&:first).uniq).index_by(&:id)
 

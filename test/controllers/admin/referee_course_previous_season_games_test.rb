@@ -1,8 +1,8 @@
 require 'test_helper'
 
-# Spalte „Vorsaison" in der Pruefmaske eines Kursimports: Gezaehlt werden nur
-# Einsaetze ab U15. Spiele in U13 und juenger sagen fuer die Einstufung nach dem
-# Kurs nichts aus.
+# Spalte „Vorsaison" in der Pruefmaske eines Kursimports: gesamt und Grossfeld
+# ab U15. Die zweite Zahl entscheidet nach einem F-Kurs ueber L1 (mindestens
+# vier Spiele) oder L2.
 module Admin
   class RefereeCoursePreviousSeasonGamesTest < ActionDispatch::IntegrationTest
     setup do
@@ -21,23 +21,31 @@ module Admin
       assert_response :success
     end
 
-    def game_in(age_group, season: :previous_season)
-      league = create(:league, season, age_group: age_group)
+    def game_in(age_group, season: :previous_season, field_size: 'GF')
+      league = create(:league, season, age_group: age_group, field_size: field_size)
       create(:game, game_day: create(:game_day, league: league), officiating_referee_ids: [@referee.id])
     end
 
     def counted
       get "/api/v2/admin/referee_course_imports/#{@import.id}"
       assert_response :success
-      response.parsed_body['results'].first['previous_season_game_count']
+      row = response.parsed_body['results'].first
+      [row['previous_season_game_count'], row['previous_season_game_count_gf_u15_plus']]
     end
 
-    test 'zaehlt nur Spiele ab U15 und Ligen ohne Altersklasse' do
+    test 'zaehlt die Vorsaison gesamt und Grossfeld ab U15 getrennt' do
       ['Herren', 'Damen', 'U15 Junioren', 'U17 Juniorinnen', 'Ü30', nil, ''].each { |ag| game_in(ag) }
       ['U13 Junioren', 'U11 Juniorinnen', 'U9 Junioren'].each { |ag| game_in(ag) }
+      game_in('Herren', field_size: 'KF')
       game_in('Herren', season: :current_season)
 
-      assert_equal 7, counted
+      assert_equal [11, 7], counted
+    end
+
+    test 'neuer Schiedsrichter ohne Datensatz hat keine Einsaetze' do
+      @import.referee_course_results.first.update!(referee: nil)
+
+      assert_equal [0, 0], counted
     end
   end
 end

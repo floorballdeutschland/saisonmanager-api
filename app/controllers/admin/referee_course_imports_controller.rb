@@ -9,12 +9,6 @@ module Admin
     MAX_CSV_BYTES = 5 * 1024 * 1024
     ALLOWED_CSV_CONTENT_TYPES = %w[text/csv text/plain application/vnd.ms-excel application/csv].freeze
 
-    # Spalte „Vorsaison": nur Spiele ab U15, Einsaetze in U13 und juenger sagen
-    # fuer die Einstufung nach dem Kurs nichts aus. Ausgeschlossen statt
-    # eingeschlossen, damit eine Liga ohne `age_group` (in Saison 17 bei einigen
-    # Playoff-Ligen leer) weiter zaehlt.
-    YOUNGER_THAN_U15 = '^U(9|11|13)( |$)'.freeze
-
     InvalidResultIds = Class.new(StandardError)
 
     SubmitRowError = Class.new(StandardError) do
@@ -332,7 +326,11 @@ module Admin
       base[:csv_club_match]      = csv_club_snapshot(csv_match)
       base[:csv_club_match_type] = csv_match&.last
       base[:age_at_kursstichtag] = age_at(result.master_geburtsdatum_by_importer, result.kursstichtag)
-      base[:previous_season_game_count] = previous_season_game_count(result.referee)
+      # Spalte „Vorsaison": gesamt und Großfeld ab U15. Die zweite Zahl
+      # entscheidet nach einem F-Kurs über L1 (mindestens vier Spiele) oder L2.
+      previous = previous_season_stats(result.referee)
+      base[:previous_season_game_count] = previous[:games]
+      base[:previous_season_game_count_gf_u15_plus] = previous[:games_gf_u15_plus]
       base
     end
 
@@ -400,15 +398,10 @@ module Admin
       Rails.logger.warn("Audit-CSV-Attach fehlgeschlagen für Import #{import.id}: #{e.class}: #{e.message}")
     end
 
-    def previous_season_game_count(referee)
-      return 0 unless referee&.lizenznummer
-
-      prev = Setting.current_season_id.to_i - 1
-      return 0 if prev <= 0
-
-      referee.games(season_id: prev)
-             .where("COALESCE(leagues.age_group, '') !~ ?", YOUNGER_THAN_U15)
-             .count
+    # Ein neuer Schiedsrichter (noch ohne Datensatz) hat keine Einsätze.
+    def previous_season_stats(referee)
+      stats = RefereeSeasonGameStats.previous_season(referee) if referee
+      stats || { games: 0, games_gf_u15_plus: 0 }
     end
   end
 end
