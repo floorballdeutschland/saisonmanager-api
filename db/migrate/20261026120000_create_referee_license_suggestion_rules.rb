@@ -8,7 +8,9 @@
 # J-Kurs → J1 bzw. J2 (je nachdem, welche Stufe der Kurs vergibt), G-Kurs → L3,
 # F-Kurs → L1 ab vier Spielen Großfeld ab U15 in der maßgeblichen Saison, sonst
 # L2. N1 und N2 bleiben ohne Regel. Fehlt eine Stufe im Katalog, entfällt die
-# Regel still; sie lässt sich danach in der Maske anlegen.
+# Regel still; sie lässt sich danach in der Maske anlegen. Ebenso die L1-Regel,
+# wenn es (etwa in einer frischen Datenbank) noch keine Altersklasse ab U15
+# gibt: Eine Regel mit Mindestzahl braucht mindestens eine Altersklasse.
 class CreateRefereeLicenseSuggestionRules < ActiveRecord::Migration[7.2]
   DEFAULT_RULES = [
     ['j', 'J1', nil, 'all', false],
@@ -25,7 +27,7 @@ class CreateRefereeLicenseSuggestionRules < ActiveRecord::Migration[7.2]
       t.integer :min_games, comment: 'NULL: ohne Bedingung'
       t.string :field_size, null: false, default: 'all', comment: 'all | KF | GF'
       t.string :age_groups, array: true, null: false, default: [],
-                            comment: 'Gezählte Altersklassen (leagues.age_group). Leer: alle.'
+                            comment: 'Gezählte Altersklassen (leagues.age_group). Nur bei min_games, dann nicht leer.'
       t.timestamps
     end
     add_index :referee_license_suggestion_rules, :course_type
@@ -46,6 +48,7 @@ class CreateRefereeLicenseSuggestionRules < ActiveRecord::Migration[7.2]
 
     DEFAULT_RULES.each do |course_type, level, min_games, field_size, u15_plus|
       next unless levels[level]
+      next if u15_plus && older.empty?
 
       ages = u15_plus ? older : []
       execute <<~SQL.squish

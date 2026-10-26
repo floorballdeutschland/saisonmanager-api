@@ -1031,7 +1031,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_26_120000) do
     t.bigint "referee_license_level_id", null: false
     t.integer "min_games", comment: "NULL: ohne Bedingung"
     t.string "field_size", default: "all", null: false, comment: "all | KF | GF"
-    t.string "age_groups", default: [], null: false, comment: "Gezählte Altersklassen (leagues.age_group). Leer: alle.", array: true
+    t.string "age_groups", default: [], null: false, comment: "Gezählte Altersklassen (leagues.age_group). Nur bei min_games, dann nicht leer.", array: true
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["course_type"], name: "index_referee_license_suggestion_rules_on_course_type"

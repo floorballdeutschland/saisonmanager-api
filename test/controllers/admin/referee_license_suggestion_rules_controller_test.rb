@@ -41,6 +41,18 @@ module Admin
       assert_response :unprocessable_entity
     end
 
+    test 'Regel mit Mindestzahl ohne Altersklasse wird abgewiesen' do
+      login(create(:user, :admin))
+
+      post '/api/v2/admin/referee_license_suggestion_rules',
+           params: { rule: { course_type: 'f', referee_license_level_id: @l1.id, min_games: 4,
+                             field_size: 'GF', age_groups: [] } }, as: :json
+
+      assert_response :unprocessable_entity
+      assert_match(/mindestens eine Altersklasse/, response.parsed_body['errors'].join)
+      assert_equal 0, RefereeLicenseSuggestionRule.count
+    end
+
     test 'FD-RSK darf die Regeln nicht pflegen' do
       login(create(:user, permissions: [{ 'user_group_id' => 3, 'game_operation_id' => 0 }]))
 

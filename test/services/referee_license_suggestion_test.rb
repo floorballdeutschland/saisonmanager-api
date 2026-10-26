@@ -61,7 +61,7 @@ class RefereeLicenseSuggestionTest < ActiveSupport::TestCase
   # Ohne eigene Reihenfolge: Bedingte Regeln vor dem Rueckfall, die hoehere
   # Mindestzahl zuerst.
   test 'hoehere Mindestzahl wird zuerst geprueft' do
-    rule('f', 'L3', min_games: 10, field_size: 'GF')
+    rule('f', 'L3', min_games: 10, field_size: 'GF', age_groups: ['Herren'])
     10.times { game_in('18', 'GF', 'Herren') }
 
     assert_equal 'L3', suggest('f', %w[L3 L2 L1])[:lizenzstufe]
@@ -88,6 +88,25 @@ class RefereeLicenseSuggestionTest < ActiveSupport::TestCase
     @levels['L3'].update!(active: false)
 
     assert_nil suggest('g', %w[L3])
+  end
+
+  # Entscheidung 26.10.2026: Keine Altersklasse heisst nicht mehr alle.
+  test 'Regel mit Mindestzahl braucht mindestens eine Altersklasse' do
+    invalid = RefereeLicenseSuggestionRule.new(course_type: 'f', referee_license_level: @levels['L1'],
+                                               min_games: 4, field_size: 'GF', age_groups: [''])
+
+    assert_not invalid.valid?
+    assert_match(/mindestens eine Altersklasse/, invalid.errors.full_messages.join)
+    assert RefereeLicenseSuggestionRule.new(course_type: 'f', referee_license_level: @levels['L2'],
+                                            age_groups: []).valid?
+  end
+
+  test 'nur die gewaehlten Altersklassen zaehlen' do
+    4.times { game_in('18', 'GF', 'Herren') }
+    RefereeLicenseSuggestionRule.find_by(referee_license_level: @levels['L1'])
+                                .update!(age_groups: ['U17 Junioren'])
+
+    assert_equal 'L2', suggest('f', %w[L2 L1])[:lizenzstufe]
   end
 
   test 'geloeschte Stufe nimmt ihre Regeln mit' do
