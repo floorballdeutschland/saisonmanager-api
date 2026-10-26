@@ -13,6 +13,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **„Heute live“ meldet, ob ein Spiel Highlights hat** (saisonmanager#612): `GET live_streams` liefert je Spiel `has_highlights`. Es ist nur true, wenn `games/:id/highlights` mindestens eine öffentliche Szene zeigt, also bei Spielen im Tabletmodus mit einem Tor mit verknüpftem Schuss oder einer vorgemerkten Szene in einer verlinkten Übertragung mit bekanntem Start. Spiele ohne Tabletmodus sind ohne weitere Abfrage false. Bei laufenden Spielen gilt dieselbe Verzögerung wie für die Highlights selbst: Ein Schlüssel ohne Echtzeit-Freigabe sieht den Wert erst, wenn ihm auch die Spielseite die Szene zeigt. Grundlage für den Button „Highlights ansehen“ auf der Live-Seite.
 
+### Verbessert
+
+- **Ausführliche Statistik: Tore ohne eigenen Torhüter nach Spielstärke** (fe#610): Die Kennung „Torwart raus“ am Tablet-Schuss (`extra_attacker`) sagt nur, dass das schießende Team ohne eigenen Torhüter spielt, die Statistik zählte das aber als „6 gegen 5“, auch wenn es in Überzahl 6 gegen 4 war (Spiel 58962). `GET games/:id/detailed_stats` leitet die Spielstärke jetzt aus den zum Schuss laufenden Strafen des Spielberichts ab, mit den Regeln der Anzeigetafel (fe#463): Unterzahl durch 2, 2+2 und 5 Minuten, ein Überzahltor beendet genau eine kleine Strafe. Jede Matchstrafe zählt wie ihre Bankstrafe 2+2, auch wenn die nicht eingetragen ist; steht beim selben Team zur selben Zeit eine 2+2 (Altdaten: 5), zählt sie nicht doppelt. Gezählt wird, was auf dem Feld steht, Strafen beider Teams heben sich nicht auf (eine Strafe je Seite plus Torwart raus ist 5 gegen 4). Jeder Schuss trägt `extra_attacker_strength` (`6v5`, `6v4`, `5v4` usw. oder `null` ohne Kennung bzw. ohne Spielzeit), die Summen je Team und Abschnitt zusätzlich `goals_extra_attacker_6v5`, `_6v4`, `_other` (jede andere Stärke) und `_unknown`. `goals_extra_attacker` bleibt die Summe. Am Tor hängende Schüsse nehmen Abschnitt und Zeit des Tores, sonst die Spielzeit am Schuss; mit der Abschnittslänge der Liga läuft eine Strafe in den nächsten Abschnitt hinüber.
+
 ## [2.4.0] - 2026-10-24
 
 ### Neu
