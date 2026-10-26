@@ -23,20 +23,18 @@
 # einem davon hinge, gehörte zu einem anderen Tor und fehlte diesem dann in
 # Highlights und Sprungmarken.
 #
-# Das technische Tor wird am Roh-Ereignis erkannt, nicht an
-# formatted_events[:goal_type]: Dort verdrängt die Pseudo-Nummer 2000 („nicht
-# angegeben") die Markierung, ein solches technisches Tor erschiene als
-# :not_assigned und bliebe verknüpfbar. Das Eigentor dagegen steht nur in der
-# Nummer und kommt aus formatted_events.
+# Das technische Tor wird an der Markierung des Roh-Ereignisses erkannt
+# (formatted_events[:technical_goal]), nicht an [:goal_type]: Dort verdrängt
+# die Pseudo-Nummer 2000 („nicht angegeben") die Torart, ein solches
+# technisches Tor erschiene als :not_assigned und bliebe verknüpfbar.
 module GameShotLinker
   module_function
 
   # ids (Integer) der Tore, an die kein Schuss gehört. `formatted` lässt sich
   # mitgeben, wenn der Aufrufer Game#formatted_events schon berechnet hat.
   def event_ids_without_shot(game, formatted = game.formatted_events)
-    technisch = (game.events || []).select { |roh| Game.technical_goal?(roh) }.map { |roh| roh['id'].to_i }
-    eigentore = formatted.select { |event| event[:goal_type] == :owngoal }.map { |event| event[:event_id].to_i }
-    (technisch + eigentore).to_set
+    formatted.select { |event| event[:goal_type] == :owngoal || event[:technical_goal] }
+             .to_set { |event| event[:event_id].to_i }
   end
 
   def event_without_shot?(game, event_id)

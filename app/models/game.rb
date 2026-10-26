@@ -1601,6 +1601,10 @@ class Game < ApplicationRecord
         # Hürde: es liegt in einem eigenen Repository mit eigenem Deploy, und
         # gespeicherte Ereignisse können aus jeder früheren Fassung stammen.
         # Serverseitig hindert nichts daran, beides zugleich zu schreiben.
+        # Die Markierung selbst geht trotzdem mit: Ein technisches Tor bekommt
+        # auch mit 2000 keinen Tablet-Schuss (GameShotLinker), und das Tablet
+        # sieht nur diese Liste.
+        e[:technical_goal] = true if Game.technical_goal?(event)
         if Game.technical_goal?(event) && !owngoal && !nagoal
           e[:goal_type] = :technical
           e[:goal_type_string] = TECHNICAL_GOAL_STRING
