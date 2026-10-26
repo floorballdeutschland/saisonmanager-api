@@ -82,7 +82,11 @@ module Admin
     def show
       return forbidden_response unless can_access_referee?(@referee)
 
-      render json: referee_json(@referee, full: true, contact: can_view_contact_data?)
+      # Wer nur über den VM-Zweig hereinkommt, bekommt die Listenfelder ohne
+      # `full`: Geburtsdatum, Anschrift, E-Mail und Benutzername braucht ein
+      # Verein nicht. Seine Sicht ist vm/referees/:id.
+      full = can_access_referee?(@referee, include_vm: false)
+      render json: referee_json(@referee, full:, contact: can_view_contact_data?)
     end
 
     # GET /api/v2/admin/referees/:id/feedbacks
