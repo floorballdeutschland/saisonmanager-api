@@ -35,7 +35,7 @@ class StreamChaptersTest < ActiveSupport::TestCase
     create(:setting)
     @start = Time.zone.parse('2026-10-11 17:50:00')
     @now = @start + 4.hours
-    @game = create(:game, game_status: 'match_record_closed', started: true,
+    @game = create(:game, game_status: 'match_record_closed', started: true, tablet_capture_at: @start,
                           players: {
                             'home' => [lineup(7, 'Max', 'Müller'), lineup(9, 'Tom', 'Schmidt')],
                             'guest' => [lineup(11, 'Ben', 'Weber')]
@@ -59,6 +59,30 @@ class StreamChaptersTest < ActiveSupport::TestCase
     assert_equal 7200, @broadcast.vod_duration_seconds
     assert @broadcast.chapters_digest.present?
     assert_equal @now.to_i, @broadcast.chapters_written_at.to_i
+  end
+
+  test 'ohne Tabletmodus keine Sprungmarken' do
+    @game.update_columns(tablet_capture_at: nil)
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: details)
+    lauf(api)
+
+    assert_empty api.written
+    assert_nil @broadcast.reload.chapters_written_at
+  end
+
+  test 'ohne Tabletmodus wird ein früher geschriebener Block entfernt' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: details)
+    lauf(api)
+    assert_includes api.description, StreamChapters::BLOCK_START
+
+    @game.update_columns(tablet_capture_at: nil)
+    lauf(api)
+
+    assert_equal 2, api.written.size
+    assert_equal "Livestream vom Spieltag\nKamera: Verein", api.description
+    assert_nil @broadcast.reload.chapters_digest
   end
 
   test 'ein zweiter Lauf ohne Änderung schreibt nicht und fragt YouTube nicht erneut' do

@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Sprungmarken in der YouTube-Beschreibung nur noch für Spiele im Tabletmodus**: Ohne am Tablet erfassten Schuss ist die Eingabezeit des Tores der einzige Anker, und die liegt je nach Sekretariat 1,5 bis über 3 Minuten hinter dem Tor, bei Nachträgen noch weiter. Bei Spiel 58679 landeten so die meisten Marken erst hinter dem Tor. Spiele ohne Tabletmodus bekommen deshalb keine Sprungmarken mehr; ein schon geschriebener Block wird beim nächsten Wächterlauf aus der Beschreibung entfernt, der übrige Text bleibt stehen. In Tablet-Spielen ändert sich nichts: Tore mit verknüpftem Schuss werden über den Schusszeitpunkt markiert, Tore ohne Schuss und Strafen weiter über die Eingabezeit.
+
 ## [2.5.0] - 2026-10-26
 
 ### Neu

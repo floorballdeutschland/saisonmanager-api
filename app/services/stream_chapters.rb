@@ -15,6 +15,14 @@ require 'digest'
 # Fünf-Minuten-Cronjob `rake streaming:watchdog`; eine eigene Crontab-Zeile
 # braucht es nicht.
 #
+# NUR TABLETMODUS: Ohne erfassten Schuss ist die Eingabezeit der
+# einzige Anker, und die liegt je nach Sekretariat 1,5 bis über 3 Minuten
+# hinter dem Tor, bei Nachträgen noch weiter (Spiel 58679: die meisten Marken
+# landeten hinter dem Tor). Spiele ohne `tablet_capture_at` bekommen deshalb
+# keinen Block; ein früher geschriebener wird beim nächsten Lauf wieder
+# entfernt. Innerhalb eines Tablet-Spiels behalten Tore ohne verknüpften Schuss
+# und Strafen die Eingabezeit als Anker.
+#
 # WELCHE ÜBERTRAGUNGEN: beendet, einem Spiel zugeordnet, Spielbericht
 # `match_record_closed` oder `finalized`, Ende nicht länger als MAX_AGE her. Nach
 # dem Abschluss korrigieren Admin und SBK noch, deshalb läuft es bis zum
@@ -104,6 +112,8 @@ class StreamChapters
   # nichts zu markieren gibt. Öffentlich, damit die Tests und ein Probelauf ihn
   # ohne YouTube sehen.
   def self.block_for(game, broadcast)
+    return nil unless game.tablet_capture?
+
     timeline = StreamTimeline.new(game, broadcast)
     return nil unless timeline.ready?
 
