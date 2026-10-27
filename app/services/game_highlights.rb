@@ -3,8 +3,9 @@
 # Virtuelle Highlights eines Tablet-Spiels (fe#555): je Tor mit verknüpftem
 # Schuss eine Szene in der YouTube-Aufzeichnung, ohne ein Video zu schneiden.
 #
-# Nur Tore mit Tablet-Schuss: `added_at` liegt 1,5 bis 2 min hinter dem Tor
-# (Stichprobe vom 11.10.2026) und taugt für eine 20-Sekunden-Szene nicht.
+# Nur Tore mit Tablet-Schuss: `added_at` liegt 1,5 bis über 3 min hinter dem
+# Tor (Stichprobe vom 11.10.2026, Spiel 58679) und taugt für eine
+# 20-Sekunden-Szene nicht.
 #
 # KEINE LIVE-ABFRAGE BEI YOUTUBE: Start und Länge der Aufzeichnung stammen aus
 # `stream_broadcasts` (gespeichert vom Wächter, StreamChapters). Die Rechnung

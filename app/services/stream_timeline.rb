@@ -18,7 +18,9 @@
 # sonst `added_at` des Ereignisses, also der Zeitpunkt der Eingabe. Das Tor
 # wird regelgemäß erst mit dem Bully eingetragen, dazu kommt die Ausfüllzeit;
 # die Stichprobe vom 11.10.2026 (sechs Bundesligaspiele, 72 Tore) lag mit 30 s
-# Vorlauf durchweg zu spät. 120 s landen zuverlässig vor dem Tor, dafür grob.
+# Vorlauf durchweg zu spät. 120 s reichen dort, bei langsamem Sekretariat oder
+# Nachtrag nicht (Spiel 58679: typisch 2,5 bis 3,5 min). Deshalb schreibt
+# StreamChapters Sprungmarken nur noch für Spiele im Tabletmodus.
 #
 # DER VERSATZ (`stream_broadcasts.offset_seconds`, fe#560): Das Bild der
 # Aufzeichnung läuft der Halle hinterher, beobachtet 10 bis 30 s, je Spiel

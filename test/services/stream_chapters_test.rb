@@ -85,6 +85,51 @@ class StreamChaptersTest < ActiveSupport::TestCase
     assert_nil @broadcast.reload.chapters_digest
   end
 
+  test 'ohne Tabletmodus: ältere Aufzeichnung verliert den Block in der Nachrechnung, danach Ruhe' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: details)
+    lauf(api)
+
+    @game.update_columns(tablet_capture_at: nil)
+    spaeter = @now + 30.days
+    StreamChapters.new(api: api, now: spaeter).run
+
+    assert_not_includes api.description, StreamChapters::BLOCK_START
+    assert_equal spaeter.to_i, @broadcast.reload.chapters_checked_at.to_i
+
+    StreamChapters.new(api: api, now: spaeter + 25.hours).run
+    assert_equal 2, api.written.size, 'nach dem Entfernen kein weiterer Aufruf'
+  end
+
+  test 'Entfernen ist je 24 Stunden gedeckelt, der Rest folgt später' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: details)
+    lauf(api)
+    @game.update_columns(tablet_capture_at: nil)
+    StreamBroadcast.insert_all(Array.new(StreamChapters::MAX_REMOVALS_PER_DAY) do |i|
+      { broadcast_id: "entfernt-#{i}", chapters_written_at: @now - 1.hour, chapters_digest: nil }
+    end)
+
+    marken = lauf(api)
+    assert_includes api.description, StreamChapters::BLOCK_START, 'Deckel erreicht: Block bleibt vorerst'
+    assert(marken.notes.any? { |n| n.include?('Tagesdeckel') })
+
+    StreamChapters.new(api: api, now: @now + 1.day).run
+    assert_not_includes api.description, StreamChapters::BLOCK_START
+  end
+
+  test 'Probelauf meldet das Entfernen als Entfernen' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: details)
+    lauf(api)
+    @game.update_columns(tablet_capture_at: nil)
+
+    marken = StreamChapters.new(api: api, now: @now, dry_run: true).run
+
+    assert_equal 1, api.written.size
+    assert(marken.notes.any? { |n| n.include?('würde Sprungmarken entfernen') })
+  end
+
   test 'ein zweiter Lauf ohne Änderung schreibt nicht und fragt YouTube nicht erneut' do
     tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
     api = FakeApi.new(details: details)
