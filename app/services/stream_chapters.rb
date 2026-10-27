@@ -2,7 +2,8 @@
 
 require 'digest'
 
-# Schreibt die Tore eines gestreamten Spiels als Sprungmarken in die
+# Schreibt die Tore eines im Tabletmodus erfassten, gestreamten Spiels als
+# Sprungmarken in die
 # Beschreibung der YouTube-Aufzeichnung (api#815):
 #
 #   Sprungmarken zu den Toren (automatisch aus dem Saisonmanager):
@@ -14,6 +15,21 @@ require 'digest'
 # LÄUFT IM WÄCHTER MIT (StreamWatchdog#run), also im vorhandenen
 # Fünf-Minuten-Cronjob `rake streaming:watchdog`; eine eigene Crontab-Zeile
 # braucht es nicht.
+#
+# NUR TABLETMODUS: Ohne erfassten Schuss ist die Eingabezeit der
+# einzige Anker, und die liegt je nach Sekretariat 1,5 bis über 3 Minuten
+# hinter dem Tor, bei Nachträgen noch weiter (Spiel 58679: die meisten Marken
+# landeten hinter dem Tor). Spiele ohne `tablet_capture_at` bekommen deshalb
+# keinen Block. Ein früher geschriebener wird wieder entfernt, bei frischen
+# Aufzeichnungen im nächsten Lauf, bei älteren in der täglichen Nachrechnung.
+# Innerhalb eines Tablet-Spiels behalten Tore ohne verknüpften Schuss und
+# Strafen die Eingabezeit als Anker.
+#
+# ENTFERNEN IST GEDECKELT: Jede Entfernung kostet 51 Einheiten. Nach dem
+# Umstieg auf „nur Tabletmodus“ stehen auf einen Schlag viele Blöcke an; ohne
+# Deckel leerte das das Tageskontingent, und der Wächter könnte hängende
+# Übertragungen bis zum Reset nicht mehr beenden. Höchstens
+# MAX_REMOVALS_PER_DAY Entfernungen in 24 Stunden, der Rest folgt später.
 #
 # WELCHE ÜBERTRAGUNGEN: beendet, einem Spiel zugeordnet, Spielbericht
 # `match_record_closed` oder `finalized`, Ende nicht länger als MAX_AGE her. Nach
@@ -62,6 +78,9 @@ class StreamChapters
   RECHECK_INTERVAL = 1.day
   ALT_BATCH = 100
 
+  # Entfernte Blöcke je 24 Stunden, rund ein Fünftel des Tageskontingents.
+  MAX_REMOVALS_PER_DAY = 40
+
   # Nach so vielen Fehlversuchen für denselben Inhalt wird aufgegeben.
   MAX_ATTEMPTS = 3
 
@@ -78,6 +97,7 @@ class StreamChapters
     @notes = []
     @probleme = []
     @written = []
+    @removals_left = nil
   end
 
   def run
@@ -100,10 +120,12 @@ class StreamChapters
     self
   end
 
-  # Der Markenblock für ein Spiel und eine Übertragung, oder nil, wenn es
-  # nichts zu markieren gibt. Öffentlich, damit die Tests und ein Probelauf ihn
+  # Der Markenblock für ein Spiel und eine Übertragung, oder nil ohne
+  # Tabletmodus oder wenn es nichts zu markieren gibt. Öffentlich, damit die Tests und ein Probelauf ihn
   # ohne YouTube sehen.
   def self.block_for(game, broadcast)
+    return nil unless game.tablet_capture?
+
     timeline = StreamTimeline.new(game, broadcast)
     return nil unless timeline.ready?
 
@@ -278,9 +300,11 @@ class StreamChapters
     return if block.nil? && satz.chapters_written_at.nil?
     # Für genau diesen Inhalt schon endgültig gescheitert und gemeldet.
     return if satz.chapters_failed_at.present? && satz.chapters_attempt_digest == digest.to_s
+    return if block.nil? && !entfernen_erlaubt?(satz)
 
     if @dry_run
-      notiz("[Probelauf] würde Sprungmarken schreiben: #{satz.broadcast_id}\n#{block}")
+      text = block ? "würde Sprungmarken schreiben: #{satz.broadcast_id}\n#{block}" : "würde Sprungmarken entfernen: #{satz.broadcast_id}"
+      notiz("[Probelauf] #{text}")
       return
     end
 
@@ -304,7 +328,7 @@ class StreamChapters
     end
     satz.update!(chapters_digest: digest, chapters_written_at: @now, chapters_attempts: 0,
                  chapters_attempt_digest: nil, chapters_failed_at: nil)
-    @written << { broadcast_id: satz.broadcast_id, result: ergebnis, markers: block.to_s.lines.size - 2 }
+    @written << { broadcast_id: satz.broadcast_id, result: ergebnis, markers: block ? block.lines.size - 2 : 0 }
     notiz("Sprungmarken (#{ergebnis}): #{satz.broadcast_id}")
   end
 
@@ -326,6 +350,21 @@ class StreamChapters
                         chapters_failed_at: endgueltig ? @now : nil)
   rescue StandardError => e
     problem("Sprungmarken für #{satz.broadcast_id}: Fehlversuch nicht vermerkt: #{e.class} #{e.message}")
+  end
+
+  # Zählt die in den letzten 24 Stunden entfernten Blöcke (Digest leer,
+  # geschrieben) einmal je Lauf und dann lokal herunter. Ein zurückgestellter
+  # Satz kommt im nächsten Lauf bzw. bei der nächsten Nachrechnung wieder dran.
+  def entfernen_erlaubt?(satz)
+    @removals_left ||= MAX_REMOVALS_PER_DAY -
+                       StreamBroadcast.where(chapters_digest: nil, chapters_written_at: (@now - 1.day)..@now).count
+    if @removals_left <= 0
+      notiz("Sprungmarken: Entfernen für #{satz.broadcast_id} zurückgestellt (Tagesdeckel)")
+      return false
+    end
+
+    @removals_left -= 1
+    true
   end
 
   def stempel_pruefung(satz)
