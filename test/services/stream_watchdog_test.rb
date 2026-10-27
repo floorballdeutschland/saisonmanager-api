@@ -88,7 +88,7 @@ class StreamWatchdogTest < ActiveSupport::TestCase
   # --- Sprungmarken laufen im selben Lauf mit (api#815) -----------------------
 
   test 'schreibt Sprungmarken fuer eine beendete Aufzeichnung mit geschlossenem Bericht' do
-    @game.update!(game_status: 'match_record_closed',
+    @game.update!(game_status: 'match_record_closed', tablet_capture_at: @now - 2.hours,
                   players: { 'home' => [{ 'trikot_number' => 7, 'player_firstname' => 'Max',
                                           'player_name' => 'Mueller' }], 'guest' => [] },
                   events: [{ 'id' => 1, 'event_type' => 'goal', 'event_team' => 'home', 'period' => 1,
