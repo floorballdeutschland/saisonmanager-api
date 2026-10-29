@@ -76,7 +76,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm rails-ap
 
 Cookie-based sessions via `cookies.signed[:user_id]`. `ApplicationController` calls `authenticate_user` before every action. The sessions controller sets the cookie on login.
 
-Public endpoints require an `X-Api-Key` header (checked against the `ApiKey` table). Cookie sessions bypass the key check.
+Public endpoints accept three ways in: a signed-in cookie session, an `X-Api-Key` header (checked against the `ApiKey` table), or an anonymous website session (`POST /api/v2/public_session`, signed cookie `sm_public_session`, see `PublicSession`). Without any of them they answer 401 with `code: public_session_required`. The website itself sends no key since 2026-10; only the prerender build does.
 
 ```ruby
 # Public endpoint pattern
@@ -146,7 +146,7 @@ GET /api/v2/version                    # public, no auth
 POST /api/v2/sessions                  # login (no auth)
 DELETE /api/v2/sessions                # logout
 
-GET /api/v2/leagues/:id/schedule       # public (X-Api-Key or cookie)
+GET /api/v2/leagues/:id/schedule       # public (X-Api-Key, login or anonymous session)
 GET /api/v2/leagues/:id/...            # public endpoints
 
 /api/v2/admin/...                      # cookie session + role check

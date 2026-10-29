@@ -225,4 +225,26 @@ class LiveDataDelayTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal '2:0', JSON.parse(response.body)['result_string']
   end
+
+  # ── Anonyme Website-Sitzung ───────────────────────────────────────────────
+  # Die Zuschauer auf saisonmanager.de kamen bis 2026-10 über den
+  # Frontend-Key mit Echtzeit-Freigabe, jetzt über die Sitzung. Hinge die
+  # Verzögerung an etwas anderem als dem Key, sähen alle Besucher die
+  # Live-Stände zehn Minuten zu spät.
+
+  test 'Spiel-Detail liefert einer anonymen Website-Sitzung den vollen Stand' do
+    post '/api/v2/public_session'
+    get "/api/v2/games/#{@game.id}.json"
+
+    assert_response :success
+    assert_equal '2:0', JSON.parse(response.body)['result_string']
+  end
+
+  test 'Liga-Spielplan liefert einer anonymen Website-Sitzung das Ergebnis' do
+    post '/api/v2/public_session'
+    get "/api/v2/leagues/#{@league.id}/schedule"
+
+    assert_response :success
+    assert_equal '2:0', schedule_entry(JSON.parse(response.body))['result_string']
+  end
 end

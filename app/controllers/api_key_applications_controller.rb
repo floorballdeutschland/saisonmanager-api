@@ -4,11 +4,11 @@
 # Formular unter /api-zugang sowie das Abholen des genehmigten Keys über einen
 # Einmal-Link.
 #
-# Der Endpunkt verlangt einen API-Key (authenticate_public_request), den das
-# eigene Frontend über den ApiKeyInterceptor mitschickt. Das ist keine
-# Berechtigungsprüfung, sondern eine Hürde gegen Skript-Einsendungen; gegen
-# Massen-Einsendungen und das Durchprobieren von Tokens greift zusätzlich ein
-# IP-Throttle (config/initializers/rack_attack.rb).
+# Der Endpunkt läuft über authenticate_public_request; das eigene Formular
+# kommt dabei über die anonyme Website-Sitzung (PublicSession). Das ist keine
+# Berechtigungsprüfung und auch kaum eine Hürde, denn jede Sitzung ist frei
+# erhältlich. Gegen Massen-Einsendungen und das Durchprobieren von Tokens
+# greift der IP-Throttle (config/initializers/rack_attack.rb).
 class ApiKeyApplicationsController < ApplicationController
   skip_before_action :authenticate_user, only: %i[create terms_version show_reveal reveal]
   before_action :authenticate_public_request, only: %i[create terms_version show_reveal reveal]

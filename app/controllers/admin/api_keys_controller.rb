@@ -22,31 +22,19 @@ module Admin
     # Aufbau bewusst identisch zu Admin::AnalyticsController#show, damit das
     # Frontend dessen Diagramm-Darstellung wiederverwenden kann.
     def usage
-      today = Date.current
-      monthly_start = (today << (USAGE_MONTHLY_RANGE_MONTHS - 1)).beginning_of_month
-      scope = @api_key.api_key_usages
-
-      daily_counts = scope.where(date: usage_daily_start..today).group(:date).sum(:count)
-      month_expr = Arel.sql("TO_CHAR(date, 'YYYY-MM')")
-      monthly_counts = scope.where(date: monthly_start..today).group(month_expr).sum(:count)
-
-      render json: {
-        last_30_days: (usage_daily_start..today).map { |d| { date: d, count: daily_counts[d] || 0 } },
-        last_year: (0...USAGE_MONTHLY_RANGE_MONTHS).map do |i|
-          month_str = (monthly_start >> i).strftime('%Y-%m')
-          { month: month_str, count: monthly_counts[month_str] || 0 }
-        end,
-        by_endpoint: scope.where(date: usage_daily_start..today)
-                          .group(:endpoint).sum(:count)
-                          .sort_by { |_endpoint, count| -count }
-                          .map { |endpoint, count| { endpoint: endpoint, count: count } },
-        rate_limit: @api_key.rate_limit,
-        name: @api_key.name
-      }
+      render json: usage_json(@api_key.api_key_usages).merge(rate_limit: @api_key.rate_limit, name: @api_key.name)
     rescue ActiveRecord::StatementInvalid, ActiveRecord::ConnectionNotEstablished => e
-      Rails.logger.error("Admin::ApiKeysController#usage failed: #{e.class}: #{e.message}")
-      Sentry.capture_exception(e) if defined?(Sentry)
-      render json: { error: 'Nutzungsdaten konnten nicht geladen werden.' }, status: :service_unavailable
+      usage_unavailable(e)
+    end
+
+    # GET /api/v2/admin/api_keys/public_usage
+    # Dieselbe Auswertung für anonyme Website-Besucher (PublicSessionUsage).
+    # `rate_limit` ist hier die Grenze je Sitzung, nicht eine Summe.
+    def public_usage
+      render json: usage_json(PublicSessionUsage.all).merge(rate_limit: PublicSession::RATE_LIMIT_PER_MINUTE,
+                                                            name: nil)
+    rescue ActiveRecord::StatementInvalid, ActiveRecord::ConnectionNotEstablished => e
+      usage_unavailable(e)
     end
 
     # POST /api/v2/admin/api_keys
@@ -81,6 +69,33 @@ module Admin
 
     def usage_daily_start
       Date.current - (USAGE_DAILY_RANGE_DAYS - 1)
+    end
+
+    def usage_json(scope)
+      today = Date.current
+      monthly_start = (today << (USAGE_MONTHLY_RANGE_MONTHS - 1)).beginning_of_month
+
+      daily_counts = scope.where(date: usage_daily_start..today).group(:date).sum(:count)
+      month_expr = Arel.sql("TO_CHAR(date, 'YYYY-MM')")
+      monthly_counts = scope.where(date: monthly_start..today).group(month_expr).sum(:count)
+
+      {
+        last_30_days: (usage_daily_start..today).map { |d| { date: d, count: daily_counts[d] || 0 } },
+        last_year: (0...USAGE_MONTHLY_RANGE_MONTHS).map do |i|
+          month_str = (monthly_start >> i).strftime('%Y-%m')
+          { month: month_str, count: monthly_counts[month_str] || 0 }
+        end,
+        by_endpoint: scope.where(date: usage_daily_start..today)
+                          .group(:endpoint).sum(:count)
+                          .sort_by { |_endpoint, count| -count }
+                          .map { |endpoint, count| { endpoint: endpoint, count: count } }
+      }
+    end
+
+    def usage_unavailable(error)
+      Rails.logger.error("Admin::ApiKeysController##{action_name} failed: #{error.class}: #{error.message}")
+      Sentry.capture_exception(error) if defined?(Sentry)
+      render json: { error: 'Nutzungsdaten konnten nicht geladen werden.' }, status: :service_unavailable
     end
 
     # Zusätzlich zum short_hash die Nutzung der letzten 30 Tage und, sofern der
