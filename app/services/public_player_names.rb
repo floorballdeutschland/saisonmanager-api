@@ -144,8 +144,9 @@ module PublicPlayerNames
 
     # Nach dem Umschalten: die Caches, die bereits aufgeloeste Namen halten.
     #
-    # `leagues/:id/scorer` ist der einzige Liga-Cache mit Namen (table und
-    # schedule fuehren nur Mannschaften). `transfers` traegt die Namen der
+    # Liga-Caches mit Namen sind `leagues/:id/scorer` und
+    # `leagues/:id/shot_stats` (LeagueShotStats); table und schedule fuehren
+    # nur Mannschaften. `transfers` traegt die Namen der
     # Vereinswechsel dieser Saison. Die Spielerstatistik cacht nur Zahlen, der
     # Name im Kopf der Antwort wird frisch gelesen -- die beiden Schluessel
     # stehen hier nur, weil sie nichts kosten.
@@ -171,13 +172,16 @@ module PublicPlayerNames
       # Maskierung ueber `to_i` auch die als Zeichenkette abgelegten IDs des
       # Altbestands trifft. Ein solches Spiel faellt hier also aus der Liste:
       # gerendert wird richtig maskiert, nur der Scorer-Cache seiner Liga laeuft
-      # ueber die TTL aus statt sofort. Das ist die billigere Seite der
+      # ueber die TTL aus statt sofort (Schussstatistik ebenso). Das ist die billigere Seite der
       # Abweichung und kein Fehler.
       Game.referencing_player(player.id)
           .joins(game_day: :league)
           .distinct
           .pluck('leagues.id')
-          .each { |league_id| Rails.cache.delete("leagues/#{league_id}/scorer") }
+          .each do |league_id|
+            Rails.cache.delete("leagues/#{league_id}/scorer")
+            LeagueShotStats.flush!(league_id)
+          end
     rescue StandardError => e
       Sentry.capture_exception(e, level: :error, tags: { public_name_flush: 'partial' })
     end

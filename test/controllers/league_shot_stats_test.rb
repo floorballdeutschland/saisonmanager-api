@@ -100,7 +100,87 @@ class LeagueShotStatsTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test 'Einsätze kommen aus der Aufstellung, nicht aus den Spielen mit Schuss' do
+    schuss(@g1, 'home', 'missed', shooter: 12)
+
+    eintrag = abruf['players'].find { |p| p['player_id'] == 12 }
+
+    assert_equal [2, 1], eintrag.values_at('games', 'shots'), 'in beiden Aufstellungen, nur in g1 geschossen'
+  end
+
+  test 'Forfaitspiele zählen weder als beendet noch in den Summen' do
+    forfait = spiel(5, @a, @b, ended: true, capture: true)
+    schuss(forfait, 'home', 'goal', shooter: 11, goalie: 22)
+    forfait.update_columns(forfait: 1)
+
+    stats = abruf
+
+    assert_equal [3, 2], stats.values_at('games_ended', 'games_captured')
+    assert_equal 3, stats['teams'].find { |t| t['team_id'] == @a.id }['shots']
+  end
+
+  test 'Schütze außerhalb der Aufstellung zählt nur in der Teamsumme' do
+    GameShot.where(game: @g1, shooter_player_id: 21).update_all(shooter_player_id: 99, goalkeeper_player_id: 98)
+
+    stats = abruf
+
+    assert_nil(stats['players'].find { |p| p['player_id'] == 99 })
+    assert_equal 1, stats['players'].find { |p| p['player_id'] == 21 }['shots'], 'g1 fällt weg, g2 bleibt'
+    assert_equal 3, stats['teams'].find { |t| t['team_id'] == @b.id }['shots']
+    assert_nil(stats['goalkeepers'].find { |g| g['player_id'] == 98 })
+  end
+
+  test 'ein Spiel ohne Gastmannschaft zählt nur für die Heimseite' do
+    ohne_gast = spiel(5, @a, @b, ended: true, capture: true)
+    schuss(ohne_gast, 'home', 'missed', shooter: 11)
+    schuss(ohne_gast, 'guest', 'saved', shooter: 21, goalie: 12)
+    ohne_gast.update_columns(guest_team_id: nil)
+
+    stats = abruf
+
+    assert_response :success
+    assert_equal [3, 4], stats['teams'].find { |t| t['team_id'] == @a.id }.values_at('games', 'shots')
+    assert_equal 2, stats['teams'].find { |t| t['team_id'] == @b.id }['games']
+    assert_equal 3, stats['players'].find { |p| p['player_id'] == 21 }['shots'], 'Schuss ohne Mannschaft fällt weg'
+  end
+
+  test 'wer die Mannschaft wechselt, steht je Mannschaft getrennt' do
+    wechsel = spiel(5, @b, @a, ended: true, capture: true)
+    wechsel.update!(players: lineup(home: [[11, 4, 'Anna', 'Schuss']] + b_lineup, guest: a_lineup.drop(1)))
+    schuss(wechsel, 'home', 'goal', shooter: 11)
+
+    eintraege = abruf['players'].select { |p| p['player_id'] == 11 }
+
+    assert_equal [[@a.id, 2, 3, 9], [@b.id, 1, 1, 4]],
+                 eintraege.map { |e| e.values_at('team_id', 'games', 'shots', 'trikot_number') }.sort
+  end
+
+  test 'Ausblenden des Nachnamens leert die Schussstatistik sofort' do
+    spieler = create(:player, first_name: 'Anna', last_name: 'Schuss')
+    [@g1, @g2].each do |game|
+      game.update!(players: game.players.transform_values do |eintraege|
+        eintraege.map { |e| e['player_id'] == 11 ? e.merge('player_id' => spieler.id) : e }
+      end)
+    end
+    GameShot.where(shooter_player_id: 11).update_all(shooter_player_id: spieler.id)
+
+    with_real_cache do
+      assert_includes abruf['players'].map { |p| p['name'] }, 'Anna Schuss'
+
+      spieler.hide_public_last_name!(create(:user, :admin).id)
+
+      assert_includes abruf['players'].map { |p| p['name'] }, 'Anna'
+      assert_not_includes response.body, 'Schuss'
+    end
+  end
+
   private
+
+  def abruf
+    get "/api/v2/leagues/#{@league.id}/shot_stats.json", headers: { 'X-Api-Key' => API_KEY }
+    assert_response :success
+    response.parsed_body
+  end
 
   def spiel(number, home, guest, ended:, capture:)
     day = GameDay.create!(league: @league, arena: @arena, club: @club, number: number,

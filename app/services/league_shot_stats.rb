@@ -18,6 +18,12 @@
 #   zählt die erfassten Spiele mit einem solchen Schuss. Schüsse aufs leere
 #   Tor zählen wie in GameShotStats bei keinem Torhüter.
 #
+# PERSONEN NUR AUS DER AUFSTELLUNG: Steht ein Schütze oder Torhüter im Spiel
+# nicht (mehr) im Spielbericht, fällt sein Schuss dort aus `players` bzw.
+# `goalkeepers` heraus und zählt nur in den Teamsummen. Sonst stünde seine
+# Spieler-ID an einem Spiel, das er laut Bericht nicht gespielt hat (siehe
+# PublicPersonRefs), und `games` wäre 0 bei Schüssen > 0.
+#
 # Wie vollständig die Zahlen sind, zeigen `games_ended`, `games_captured` und
 # `games_complete`: Nur ein Teil der Spiele wird im Tabletmodus erfasst, und
 # nicht jedes davon vollständig. Namen in öffentlicher Anzeigeform aus dem
@@ -98,9 +104,10 @@ class LeagueShotStats
       shots = @shots.fetch(game.id, []).select { |shot| shot.shooter_player_id.present? }
       shots.group_by { |shot| [shot.team, shot.shooter_player_id] }.each do |(side, player_id), eigene|
         team = team_of(game, side)
-        next if team.nil?
+        ref = refs.ref(side, player_id)
+        next if team.nil? || ref.nil?
 
-        eintrag = person(eintraege, team, player_id, refs.ref(side, player_id))
+        eintrag = person(eintraege, team, player_id, ref)
         eintrag[:shots] += eigene.size
         eintrag[:on_goal] += eigene.count(&:on_goal?)
         eintrag[:goals] += eigene.count { |shot| shot.result == 'goal' }
@@ -136,9 +143,10 @@ class LeagueShotStats
       end
       aufs_tor.group_by { |shot| [gegner(shot.team), shot.goalkeeper_player_id] }.each do |(side, player_id), shots|
         team = team_of(game, side)
-        next if team.nil?
+        ref = refs.ref(side, player_id)
+        next if team.nil? || ref.nil?
 
-        eintrag = person(eintraege, team, player_id, refs.ref(side, player_id), torhueter: true)
+        eintrag = person(eintraege, team, player_id, ref, torhueter: true)
         eintrag[:games] += 1
         eintrag[:saves] += shots.count { |shot| shot.result == 'saved' }
         eintrag[:shots_against] += shots.size
@@ -158,8 +166,7 @@ class LeagueShotStats
     eintrag = eintraege[[team.id, player_id.to_i]] ||=
       { player_id: player_id.to_i, team_id: team.id, team_name: team.name, trikot_number: nil, name: '' }
       .merge(zaehler)
-    eintrag.merge!(ref.slice(:trikot_number, :name)) if ref
-    eintrag
+    eintrag.merge!(ref.slice(:trikot_number, :name))
   end
 
   def aufstellung(game, side)
