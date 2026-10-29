@@ -2235,7 +2235,7 @@ class Game < ApplicationRecord
     league_id = game_day&.league_id
     return if league_id.blank?
 
-    %w[schedule current_schedule table grouped_table scorer].each do |key|
+    %w[schedule current_schedule table grouped_table scorer shot_stats].each do |key|
       Rails.cache.delete("leagues/#{league_id}/#{key}")
     end
 

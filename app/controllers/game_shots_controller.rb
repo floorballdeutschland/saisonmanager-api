@@ -13,7 +13,8 @@
 #
 # `detailed_stats` ist öffentlich (API-Key oder Sitzung) und nur für Spiele,
 # die im Tabletmodus erfasst wurden; sonst 404, damit die Spielseite den Reiter
-# gar nicht erst zeigt.
+# gar nicht erst zeigt. Ein API-Key braucht dafür die Freigabe
+# `detailed_stats` (ApiKey::FEATURES), sonst 403.
 class GameShotsController < ApplicationController
   include SecretaryTokenAuthenticatable
   include GameReportPermissions
@@ -24,6 +25,7 @@ class GameShotsController < ApplicationController
   skip_before_action :authenticate_user
   before_action :authenticate_with_secretary_token_or_user, only: EDIT_ACTIONS
   before_action :authenticate_public_request, only: %i[detailed_stats highlights]
+  before_action -> { require_api_feature!(:detailed_stats) }, only: :detailed_stats
   before_action :set_game
   before_action :require_read, only: %i[index feedback]
   before_action :require_write, only: %i[create update destroy link tablet_capture]

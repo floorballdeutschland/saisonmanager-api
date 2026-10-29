@@ -102,6 +102,31 @@ module Admin
       assert_nil application.reload.api_key_id
     end
 
+    test 'Freigaben lassen sich setzen und wieder entziehen, unbekannte werden abgewiesen' do
+      login(@admin)
+
+      patch "/api/v2/admin/api_keys/#{@key.id}", params: { api_key: { features: %w[detailed_stats league_shot_stats] } },
+                                                 as: :json
+      assert_response :success
+      assert_equal %w[detailed_stats league_shot_stats], response.parsed_body['features']
+
+      patch "/api/v2/admin/api_keys/#{@key.id}", params: { api_key: { features: [] } }, as: :json
+      assert_response :success
+      assert_equal [], @key.reload.features
+
+      patch "/api/v2/admin/api_keys/#{@key.id}", params: { api_key: { features: %w[alles] } }, as: :json
+      assert_response :unprocessable_entity
+      assert_equal [], @key.reload.features
+    end
+
+    test 'ein Key aus dem Antrag startet ohne Freigabe' do
+      application = create(:api_key_application)
+      application.approve!(@admin.id)
+      application.reveal_key!
+
+      assert_equal [], application.reload.api_key.features
+    end
+
     def login(user)
       post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
       assert_response :success
