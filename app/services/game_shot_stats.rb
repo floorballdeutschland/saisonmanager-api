@@ -43,6 +43,7 @@ class GameShotStats
       Rails.cache.delete(cache_key(game, variant))
       Rails.cache.delete(GameHighlights.cache_key(game, variant))
     end
+    LeagueShotStats.flush!(game.game_day&.league_id)
   end
 
   # `cutoff`: nur Schüsse vor diesem Zeitpunkt (verzögerte API-Schlüssel bei
