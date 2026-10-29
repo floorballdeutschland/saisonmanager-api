@@ -46,6 +46,7 @@ class LeaguesController < ApplicationController
 
   skip_before_action :authenticate_user, except: COOKIE_ONLY_ACTIONS
   before_action :authenticate_public_request, except: COOKIE_ONLY_ACTIONS + KEYLESS_ACTIONS
+  before_action -> { require_api_feature!(:league_shot_stats) }, only: :shot_stats
   after_action :track_public_view,
                only: %i[schedule current_schedule game_day_schedule table grouped_table scorer],
                if: -> { response.successful? }
@@ -768,6 +769,17 @@ class LeaguesController < ApplicationController
     # das Durchklicken (Tabelle ↔ Scorer ↔ Spielplan) requestfrei.
     expires_in 30.seconds, public: true
     render json: scorer
+  end
+
+  # GET /leagues/1/shot_stats
+  #
+  # Zusatzpaket `league_shot_stats` (ApiKey::FEATURES), Aufbau an
+  # LeagueShotStats. Nur beendete Spiele, deshalb ohne Verzögerung.
+  def shot_stats
+    league = League.find(params[:id])
+
+    expires_in 30.seconds
+    render json: LeagueShotStats.cached(league)
   end
 
   # GET /leagues/1/table

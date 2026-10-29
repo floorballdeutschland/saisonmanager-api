@@ -9,6 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Zusatzpakete je API-Schlüssel**: `api_keys.features` hält die freigegebenen Pakete eines Schlüssels (`ApiKey::FEATURES`), gesetzt von Admin über `PATCH admin/api_keys/:id` mit `features: [...]`. Die Pakete werden individuell vereinbart; ein Zugang aus dem Antragsprozess startet immer ohne. Ein Schlüssel ohne Freigabe bekommt 403, eine Sitzung kommt wie bisher durch. Bisher lieferte `games/:id/detailed_stats` an jeden aktiven Schlüssel aus, jetzt nur noch mit `detailed_stats`. Bei der Migration behalten nur die in der Verwaltung von Hand angelegten Schlüssel (Frontend, Prerender, eigene Anwendungen) die Freigabe; alle Zugänge aus dem Antragsprozess verlieren sie.
+- **Schussstatistik einer Liga** (`GET leagues/:id/shot_stats`, Paket `league_shot_stats`): Schüsse, Tore und Gegenwerte je Mannschaft, Schüsse, Tore und Trefferquote je Spielerin/Spieler sowie Paraden und Fangquote je Torhüter über alle beendeten Spiele im Tabletmodus. Mannschaften und Personen tragen ihre ID, Namen in öffentlicher Anzeigeform. `games_ended`, `games_captured` und `games_complete` zeigen, wie viele Spiele der Liga die Zahlen abdecken. Die Website zeigt diese Statistik nicht.
+
 ### Verbessert
 
 - **Sprungmarken in der YouTube-Beschreibung nur noch für Spiele im Tabletmodus**: Ohne am Tablet erfassten Schuss ist die Eingabezeit des Tores der einzige Anker, und die liegt je nach Sekretariat 1,5 bis über 3 Minuten hinter dem Tor, bei Nachträgen noch weiter. Bei Spiel 58679 landeten so die meisten Marken erst hinter dem Tor. Spiele ohne Tabletmodus bekommen deshalb keine Sprungmarken mehr; ein schon geschriebener Block wird bei einem der nächsten Wächterläufe aus der Beschreibung entfernt (ältere Aufzeichnungen in der täglichen Nachrechnung), der übrige Text bleibt stehen. Damit das Entfernen das YouTube-Kontingent nicht aufbraucht und der Wächter weiter hängende Übertragungen beenden kann, werden höchstens 40 Blöcke je 24 Stunden entfernt, der Rest folgt an den Tagen danach. In Tablet-Spielen ändert sich nichts: Tore mit verknüpftem Schuss werden über den Schusszeitpunkt markiert, Tore ohne Schuss und Strafen weiter über die Eingabezeit.

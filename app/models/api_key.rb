@@ -13,8 +13,19 @@ class ApiKey < ApplicationRecord
   # der Zugriffe (ApiKeyUsage) statt beim Zeitstempel.
   LAST_USED_PRECISION = 1.minute
 
+  # Zusatzpakete, die nur ausdrücklich freigegebene Schlüssel abrufen dürfen
+  # (ApplicationController#require_api_feature!). Sie werden individuell
+  # vereinbart und von Hand in der Verwaltung gesetzt, nie über den Antrag.
+  # - detailed_stats: ausführliche Statistik eines Spiels (games/:id/detailed_stats)
+  # - league_shot_stats: Schussstatistik einer Liga über alle Tabletspiele
+  #   (leagues/:id/shot_stats); die Website zeigt sie nicht
+  FEATURES = %w[detailed_stats league_shot_stats].freeze
+
   validates :name, presence: true
   validates :key_digest, presence: true, uniqueness: true
+  validate :features_known
+
+  before_validation { self.features = Array(features).compact_blank.map(&:to_s).uniq }
 
   after_update :clear_meta_cache
   after_destroy :clear_meta_cache
@@ -61,11 +72,20 @@ class ApiKey < ApplicationRecord
     end
   end
 
+  def feature?(name)
+    features.include?(name.to_s)
+  end
+
   def short_hash
-    { id:, name:, active:, rate_limit:, realtime:, created_at:, last_used_at: }
+    { id:, name:, active:, rate_limit:, realtime:, features:, created_at:, last_used_at: }
   end
 
   private
+
+  def features_known
+    unknown = features - FEATURES
+    errors.add(:features, "unbekannt: #{unknown.join(', ')}") if unknown.any?
+  end
 
   def clear_meta_cache
     Rails.cache.delete("api_key/meta/#{key_digest}")
