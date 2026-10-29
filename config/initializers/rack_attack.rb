@@ -290,6 +290,39 @@ module Rack
       raw_key
     end
 
+    # Ausstellen anonymer Website-Sitzungen (PublicSession), je Adresse.
+    # `start_with?` wegen des `(.:format)` jeder Rails-Route, siehe den
+    # Sekretariats-Code oben.
+    #
+    # Die Grenzen beider Töpfe stehen in Lambdas, weil PublicSession unter
+    # app/ liegt und beim Laden dieses Initializers noch nicht autoloadbar ist.
+    throttle('public-session/ip',
+             limit: ->(_req) { ::PublicSession::ISSUE_LIMIT_PER_MINUTE },
+             period: 1.minute) do |req|
+      req.ip if req.post? && req.path.start_with?('/api/v2/public_session')
+    end
+
+    # Abrufe je anonymer Sitzung. Gezählt wird die Kennung aus dem signierten
+    # Cookie, nicht die Adresse: In der Halle teilen sich alle Zuschauer eine
+    # IP, und ein Topf je Adresse würde sie gegenseitig ausbremsen.
+    #
+    # Nicht gezählt wird, wer angemeldet ist oder einen gültigen Key schickt:
+    # Der Controller prüft beides VOR der Sitzung, solche Requests laufen also
+    # gar nicht über sie. Die Anmeldung wird dabei über die Signatur geprüft und
+    # nicht nur über das Vorhandensein des Cookies. Sonst genügte ein
+    # erfundenes `user_id`, um am Topf vorbeizukommen, während der Controller
+    # den Request trotzdem über die Sitzung annimmt.
+    throttle('public-session/id',
+             limit: ->(_req) { ::PublicSession::RATE_LIMIT_PER_MINUTE },
+             period: 1.minute) do |req|
+      session = ::PublicSession.verify(req.cookies[::PublicSession::COOKIE_NAME])
+      next unless session
+      next if ApiKey.cached_meta(req.get_header('HTTP_X_API_KEY'))
+      next if ActionDispatch::Request.new(req.env).cookie_jar.signed[:user_id]
+
+      session.id
+    end
+
     # Grenze je Overlay-Token. Die Abrufe tragen keinen API-Key, fielen also
     # durch beide Töpfe oben hindurch.
     #

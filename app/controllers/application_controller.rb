@@ -86,8 +86,27 @@ class ApplicationController < ActionController::Base
     # verzögerten Daten und falschen Zahlen in der Nutzungsstatistik.
     @authenticated_api_key = ApiKey.authenticate(raw_key)
     return if @authenticated_api_key
+    return if authenticate_public_session
 
-    render json: { success: false, message: 'API key required' }, status: :unauthorized
+    # `code` sagt dem eigenen Frontend, dass es sich eine anonyme Sitzung holen
+    # und den Abruf wiederholen soll. Ohne ihn hielte der ErrorInterceptor das
+    # 401 für eine abgelaufene Anmeldung und schickte Zuschauer auf /login.
+    render json: { success: false, message: 'API key required', code: 'public_session_required' },
+           status: :unauthorized
+  end
+
+  # Anonyme Sitzung der eigenen Website (PublicSession). Ein Cookie, das die
+  # Hälfte seiner Laufzeit hinter sich hat, wird mit derselben Kennung neu
+  # ausgestellt, damit eine offene Seite nie in den Ablauf läuft.
+  def authenticate_public_session
+    @public_session = PublicSession.verify(cookies[PublicSession::COOKIE_NAME])
+    return false unless @public_session
+
+    if @public_session.renew?
+      value, = PublicSession.issue(id: @public_session.id)
+      cookies[PublicSession::COOKIE_NAME] = PublicSession.cookie_options(value)
+    end
+    true
   end
 
   def api_key_request?
@@ -95,8 +114,8 @@ class ApplicationController < ActionController::Base
   end
 
   # True, wenn die Antwort verzögert werden muss: Der Zugriff kommt über einen
-  # API-Key ohne Echtzeit-Freigabe. Cookie-Sessions (eigenes Frontend,
-  # angemeldete Nutzer) sind nie betroffen.
+  # API-Key ohne Echtzeit-Freigabe. Anonyme Sitzungen der eigenen Website und
+  # angemeldete Nutzer sind nie betroffen.
   def delay_live_data?
     api_key_request? && !@authenticated_api_key&.realtime
   end
@@ -178,14 +197,21 @@ class ApplicationController < ActionController::Base
   # @authenticated_api_key ausschließlich in authenticate_public_request gesetzt
   # wird.
   #
-  # Nicht gezählt werden Zugriffe per Cookie-Session (dort bleibt die Variable
-  # leer) und abgewiesene Requests: Hält eine before_action die Kette an (401
-  # wegen fehlendem Key, 429 durch Rack::Attack), läuft diese after_action nicht.
+  # Zugriffe über eine anonyme Sitzung der Website landen in einem eigenen
+  # Zähler (PublicSessionUsage). Bis die Sitzung den Frontend-Key ablöste,
+  # standen sie in dessen Statistik; ohne den zweiten Zweig wäre der
+  # Website-Verkehr aus der Auswertung verschwunden.
+  #
+  # Nicht gezählt werden angemeldete Nutzer (beide Variablen bleiben leer) und
+  # abgewiesene Requests: Hält eine before_action die Kette an (401 wegen
+  # fehlendem Key, 429 durch Rack::Attack), läuft diese after_action nicht.
   def track_api_key_usage
-    return unless api_key_request?
-
-    ApiKeyUsage.increment!(api_key_id: @authenticated_api_key.id,
-                           endpoint: "#{controller_name}##{action_name}")
+    endpoint = "#{controller_name}##{action_name}"
+    if api_key_request?
+      ApiKeyUsage.increment!(api_key_id: @authenticated_api_key.id, endpoint: endpoint)
+    elsif @public_session
+      PublicSessionUsage.increment!(endpoint: endpoint)
+    end
   end
 
   def current_user

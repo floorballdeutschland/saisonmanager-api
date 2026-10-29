@@ -439,6 +439,8 @@ Rails.application.routes.draw do
         resources :game_operations, only: %i[show create update destroy]
         resources :api_keys, only: %i[index create update destroy] do
           get :usage, on: :member
+          # Zugriffe anonymer Website-Besucher (PublicSessionUsage)
+          get :public_usage, on: :collection
         end
         resources :api_key_applications, only: %i[index] do
           member do
@@ -595,6 +597,10 @@ Rails.application.routes.draw do
       post 'api_key_applications', to: 'api_key_applications#create'
       get  'api_key_applications/reveal/:token', to: 'api_key_applications#show_reveal'
       post 'api_key_applications/reveal', to: 'api_key_applications#reveal'
+
+      # Anonyme Sitzung der eigenen Website, Ersatz für den Frontend-Key im
+      # Bundle (PublicSession).
+      post 'public_session', to: 'public_sessions#create'
 
       # Kein :index – GET /api/v2/games lieferte per Game.all die komplette
       # Spieltabelle ohne Filter und ohne Grenze (siehe GamesController).

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_26_120000) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_29_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -662,6 +662,15 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_26_120000) do
     t.index ["game_id"], name: "index_proceeding_proposals_on_game_id", unique: true
     t.index ["state_association_id"], name: "index_proceeding_proposals_on_state_association_id"
     t.index ["status"], name: "index_proceeding_proposals_on_status"
+  end
+
+  create_table "public_session_usages", force: :cascade do |t|
+    t.date "date", null: false
+    t.string "endpoint", null: false, comment: "controller#action, z. B. leagues#schedule"
+    t.integer "count", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["date", "endpoint"], name: "index_public_session_usages_unique", unique: true
   end
 
   create_table "referee_assignments", force: :cascade do |t|
