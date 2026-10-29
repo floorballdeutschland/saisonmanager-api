@@ -41,6 +41,36 @@ class PublicSessionTest < ActiveSupport::TestCase
     end
   end
 
+  # Gueltige Signatur, falscher Inhalt: Das ist ein Fehler bei uns, kein
+  # Besucherfall, und muss deshalb auffallen statt still nil zu liefern.
+  test 'ein signiertes Cookie mit unerwartetem Inhalt wird gemeldet' do
+    odd = Rails.application.message_verifier(:public_session)
+               .generate({ 'id' => 42 }, purpose: :public_session)
+    warnings = []
+
+    Rails.logger.stub(:warn, ->(msg) { warnings << msg }) do
+      assert_nil PublicSession.verify(odd)
+    end
+
+    assert(warnings.any? { |w| w.include?('unerwartetem Inhalt') })
+  end
+
+  test 'ein manipuliertes Cookie wird nicht gemeldet, das ist der Normalfall' do
+    warnings = []
+
+    Rails.logger.stub(:warn, ->(msg) { warnings << msg }) do
+      assert_nil PublicSession.verify('frei-erfunden--abc')
+    end
+
+    assert_empty warnings
+  end
+
+  test 'IPv4 zaehlt je Adresse, IPv6 je /64' do
+    assert_equal '203.0.113.7', PublicSession.issuer_key('203.0.113.7')
+    assert_equal PublicSession.issuer_key('2001:db8:1:2::1'), PublicSession.issuer_key('2001:db8:1:2:ffff::9')
+    assert_not_equal PublicSession.issuer_key('2001:db8:1:2::1'), PublicSession.issuer_key('2001:db8:1:3::1')
+  end
+
   test 'erneuert wird erst nach der Haelfte der Laufzeit' do
     _value, payload = PublicSession.issue
 

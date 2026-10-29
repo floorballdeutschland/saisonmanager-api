@@ -66,8 +66,8 @@ module Rack
 
     # Antrag auf einen API-Zugang. Löst Mail an ein festes Postfach aus, gehört
     # damit in dieselbe Kategorie wie MAIL_TRIGGER_PATHS. Der Key-Throttle weiter
-    # unten hilft hier nicht: Er greift nur bei Keys mit gesetztem Rate-Limit, und
-    # der Frontend-Key hat keines.
+    # unten hilft hier nicht: Er greift nur bei Keys mit gesetztem Rate-Limit,
+    # und das Formular kommt ohne Key über die anonyme Website-Sitzung.
     # Einwilligung der Erziehungsberechtigten zu einer Kursanmeldung. Der Token
     # ist die Berechtigung, also gegen Durchprobieren drosseln.
     throttle('course-guardian-consent/ip', limit: 30, period: 1.hour) do |req|
@@ -261,9 +261,10 @@ module Rack
       # bliebe wirkungslos, weil die 60 pro IP daneben stehen blieben. Die
       # Vereinbarung sagt eine Grenze je Key zu, nicht je Adresse.
       #
-      # Keys OHNE eigene Grenze (eigenes Frontend, Prerender) bleiben bewusst im
-      # IP-Topf: Der Frontend-Key steht im ausgelieferten Bundle und wäre sonst
-      # der bequemste Weg, die Kostenbremse zu umgehen.
+      # Keys OHNE eigene Grenze (Prerender, Partner, der alte Frontend-Key)
+      # bleiben bewusst im IP-Topf: Der alte Frontend-Key stand bis 2026-10 im
+      # ausgelieferten Bundle und wäre sonst der bequemste Weg, die
+      # Kostenbremse zu umgehen, solange er nicht deaktiviert ist.
       next if ApiKey.cached_meta(req.get_header('HTTP_X_API_KEY'))&.[](:rate_limit)
 
       req.ip if CRAWLER_USER_AGENTS.match?(req.user_agent.to_s)
@@ -294,12 +295,23 @@ module Rack
     # `start_with?` wegen des `(.:format)` jeder Rails-Route, siehe den
     # Sekretariats-Code oben.
     #
-    # Die Grenzen beider Töpfe stehen in Lambdas, weil PublicSession unter
-    # app/ liegt und beim Laden dieses Initializers noch nicht autoloadbar ist.
+    # Zwei Fenster: Die Minute fängt den Einlass einer vollen Halle ab, die
+    # Stunde deckelt ein Skript, das laufend frische Sitzungen holt, um die
+    # Grenze je Sitzung zu umgehen. Ohne den Stundentopf brächten 300 neue
+    # Sitzungen pro Minute nach zehn Minuten 3000 parallele Töpfe.
+    #
+    # Die Grenzen stehen in Lambdas, weil PublicSession unter app/ liegt und
+    # beim Laden dieses Initializers noch nicht autoloadbar ist.
     throttle('public-session/ip',
              limit: ->(_req) { ::PublicSession::ISSUE_LIMIT_PER_MINUTE },
              period: 1.minute) do |req|
-      req.ip if req.post? && req.path.start_with?('/api/v2/public_session')
+      ::PublicSession.issuer_key(req.ip) if req.post? && req.path.start_with?('/api/v2/public_session')
+    end
+
+    throttle('public-session/ip/hour',
+             limit: ->(_req) { ::PublicSession::ISSUE_LIMIT_PER_HOUR },
+             period: 1.hour) do |req|
+      ::PublicSession.issuer_key(req.ip) if req.post? && req.path.start_with?('/api/v2/public_session')
     end
 
     # Abrufe je anonymer Sitzung. Gezählt wird die Kennung aus dem signierten

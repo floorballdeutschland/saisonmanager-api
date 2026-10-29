@@ -20,8 +20,9 @@ class ApiKey < ApplicationRecord
   after_destroy :clear_meta_cache
 
   # rate_limit ist die Grenze in Anfragen pro Minute; nil heißt unbegrenzt und
-  # bleibt der Vorgabewert für die von Hand angelegten Keys (eigenes Frontend,
-  # Prerender-Build). Zugänge aus dem Antragsprozess bekommen die Grenze aus
+  # bleibt der Vorgabewert für die von Hand angelegten Keys (Prerender-Build,
+  # Partner; bis 2026-10 auch das eigene Frontend, das sich seitdem über eine
+  # anonyme Sitzung ausweist, siehe PublicSession). Zugänge aus dem Antragsprozess bekommen die Grenze aus
   # § 6.1 der Nutzungsvereinbarung mitgegeben, siehe ApiKeyApplication#reveal_key!.
   def self.generate(name:, rate_limit: nil)
     raw_key = SecureRandom.hex(32)
