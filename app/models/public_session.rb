@@ -26,9 +26,15 @@ class PublicSession
 
   # Neue Sitzungen je Adresse und Minute. Gezählt wird bewusst nur das
   # Ausstellen und nicht jeder Abruf: In der Halle hängen alle Zuschauer hinter
-  # derselben IP. Wer einmal eine Sitzung hat, behält sie 24 Stunden; 60 neue
-  # Besucher pro Minute aus einem Netz reichen auch für den Einlass.
-  ISSUE_LIMIT_PER_MINUTE = 60
+  # derselben IP. Wer einmal eine Sitzung hat, behält sie 24 Stunden.
+  #
+  # 300 und nicht weniger, weil bei einem Finale mit über tausend Zuschauern
+  # kurz vor dem Anpfiff viele Geräte im Hallen-WLAN zugleich zum ersten Mal
+  # kommen. Gegen ein Skript, das Cookies speichert, schützt diese Grenze
+  # ohnehin kaum; sie bremst vor allem Skripte ohne Cookie-Speicher, die für
+  # jeden Abruf eine neue Sitzung holen. Wer doch an die Grenze stößt, wartet
+  # im Frontend still ab (PublicSessionService) und sieht keinen Fehler.
+  ISSUE_LIMIT_PER_MINUTE = 300
 
   PURPOSE = :public_session
 
