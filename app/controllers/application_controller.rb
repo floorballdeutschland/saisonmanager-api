@@ -205,13 +205,27 @@ class ApplicationController < ActionController::Base
   # Nicht gezählt werden angemeldete Nutzer (beide Variablen bleiben leer) und
   # abgewiesene Requests: Hält eine before_action die Kette an (401 wegen
   # fehlendem Key, 429 durch Rack::Attack), läuft diese after_action nicht.
+  #
+  # Zusätzlich eine Logzeile je Zugriff, mit Weg und Adresse. Die Statistik
+  # kennt nur Key und Endpunkt, das Log nur Adresse und Pfad; ohne diese Zeile
+  # ließ sich nicht sagen, welcher Server mit welchem Key abruft. Gesucht wird
+  # danach mit `grep "public-access"`.
   def track_api_key_usage
     endpoint = "#{controller_name}##{action_name}"
     if api_key_request?
       ApiKeyUsage.increment!(api_key_id: @authenticated_api_key.id, endpoint: endpoint)
+      log_public_access("api_key=#{@authenticated_api_key.id}", endpoint)
     elsif @public_session
       PublicSessionUsage.increment!(endpoint: endpoint)
+      # Nur ein Präfix der Kennung: Es reicht, um die Abrufe einer Sitzung
+      # zusammenzuhalten, und gibt das Cookie nicht preis (es ist ohnehin
+      # signiert und ohne Signatur wertlos).
+      log_public_access("public_session=#{@public_session.id.first(8)}", endpoint)
     end
+  end
+
+  def log_public_access(via, endpoint)
+    Rails.logger.info("public-access #{via} ip=#{request.remote_ip} endpoint=#{endpoint}")
   end
 
   def current_user

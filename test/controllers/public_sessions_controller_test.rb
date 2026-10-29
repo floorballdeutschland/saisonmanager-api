@@ -109,6 +109,32 @@ class PublicSessionsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0, PublicSessionUsage.count
   end
 
+  # Ohne diese Zeile laesst sich im Log nicht sagen, welcher Server mit
+  # welchem Key abruft: Die Statistik kennt keine Adressen.
+  test 'jeder Zugriff ueber Key oder Sitzung steht mit Weg und Adresse im Log' do
+    raw_key, api_key = ApiKey.generate(name: 'Integration')
+
+    log = capture_log do
+      get PUBLIC_PATH, headers: { 'HTTP_X_API_KEY' => raw_key }
+      post '/api/v2/public_session'
+      get PUBLIC_PATH
+    end
+
+    assert_match(/public-access api_key=#{api_key.id} ip=127\.0\.0\.1 endpoint=game_operations#index/, log)
+    session_prefix = PublicSession.verify(cookies[PublicSession::COOKIE_NAME]).id.first(8)
+    assert_match(/public-access public_session=#{session_prefix} ip=127\.0\.0\.1 endpoint=game_operations#index/, log)
+  end
+
+  test 'angemeldete Zugriffe erscheinen nicht als oeffentlicher Zugriff im Log' do
+    user = create(:user, :admin)
+    post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
+
+    log = capture_log { get PUBLIC_PATH }
+
+    assert_response :success
+    assert_no_match(/public-access/, log)
+  end
+
   test 'angemeldete Nutzer werden nicht als anonyme Besucher gezaehlt' do
     user = create(:user, :admin, password: 'password123')
     post '/api/v2/public_session'
@@ -119,5 +145,17 @@ class PublicSessionsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_equal 0, PublicSessionUsage.count
+  end
+
+  private
+
+  def capture_log
+    io = StringIO.new
+    original = Rails.logger
+    Rails.logger = ActiveSupport::Logger.new(io)
+    yield
+    io.string
+  ensure
+    Rails.logger = original
   end
 end
