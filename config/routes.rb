@@ -95,6 +95,7 @@ Rails.application.routes.draw do
           get :table
           get :grouped_table
           get :scorer
+          get :shot_stats
           get :meta
         end
       end

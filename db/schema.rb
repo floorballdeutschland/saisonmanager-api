@@ -92,6 +92,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_29_140000) do
     t.datetime "last_used_at"
     t.integer "rate_limit", comment: "Max requests per minute; nil = unlimited"
     t.boolean "realtime", default: false, null: false
+    t.string "features", default: [], null: false, comment: "Freigegebene Zusatzpakete, siehe ApiKey::FEATURES", array: true
     t.index ["key_digest"], name: "index_api_keys_on_key_digest", unique: true
   end
 

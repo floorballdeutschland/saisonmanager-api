@@ -5,3 +5,7 @@ smoke_test:
   name: Smoke-Test-Key
   key_digest: 6776814aa0f825d2a29d8184ea45c16bc31994a4231b04f868a3ac9d178aa34f
   active: true
+  # Alle Zusatzpakete, damit bestehende Tests der Statistik-Endpunkte die
+  # Freigabe nicht einzeln setzen müssen. Den Fall ohne Freigabe prüfen
+  # GameShotsControllerTest und LeagueShotStatsTest mit eigenem Schlüssel.
+  features: [detailed_stats, league_shot_stats]

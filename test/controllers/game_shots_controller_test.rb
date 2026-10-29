@@ -416,6 +416,23 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     assert_response :not_found
   end
 
+  test 'detailed_stats: API-Schlüssel ohne Freigabe bekommt 403, eine Sitzung kommt durch' do
+    @game.update!(ended: true)
+    post_shots([shot('a')])
+    raw_key, = ApiKey.generate(name: 'Ohne Paket', rate_limit: 60)
+
+    get "/api/v2/games/#{@game.id}/detailed_stats.json", headers: { 'X-Api-Key' => raw_key }
+    assert_response :forbidden
+
+    ApiKey.find_by(name: 'Ohne Paket').update!(features: %w[detailed_stats])
+    get "/api/v2/games/#{@game.id}/detailed_stats.json", headers: { 'X-Api-Key' => raw_key }
+    assert_response :success
+
+    login_as(create(:user, :admin))
+    get "/api/v2/games/#{@game.id}/detailed_stats.json"
+    assert_response :success
+  end
+
   test 'detailed_stats rechnet Summen, Torhüter und Spieler mit öffentlichen Namen' do
     versteckt = create(:player, first_name: 'Max', last_name: 'Geheim', public_last_name_hidden_at: Time.current)
     @game.update!(ended: true, players: {

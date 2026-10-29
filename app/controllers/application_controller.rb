@@ -113,6 +113,17 @@ class ApplicationController < ActionController::Base
     @authenticated_api_key.present?
   end
 
+  # Für Zusatzpakete (ApiKey::FEATURES), nach authenticate_public_request.
+  # Nur der Zugriff per API-Schlüssel braucht die Freigabe; eine Sitzung
+  # (eigenes Frontend mit Anmeldung, Verwaltung) kommt immer durch.
+  def require_api_feature!(feature)
+    return unless api_key_request?
+    return if @authenticated_api_key.feature?(feature)
+
+    render json: { success: false, message: 'Diese Daten sind für diesen API-Schlüssel nicht freigeschaltet.' },
+           status: :forbidden
+  end
+
   # True, wenn die Antwort verzögert werden muss: Der Zugriff kommt über einen
   # API-Key ohne Echtzeit-Freigabe. Anonyme Sitzungen der eigenen Website und
   # angemeldete Nutzer sind nie betroffen.
