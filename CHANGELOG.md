@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-10-30
+
 ### Verbessert
 
 - **Herkunft von Key-Zugriffen im Log**: Die Logzeile `public-access` nennt bei Zugriffen über einen API-Key zusätzlich `origin`, `referer` und `ua` (gekürzt auf 200 Zeichen, `-` wenn leer). Der frühere Frontend-Key wird nach der Umstellung auf Sitzungen weiter in gleicher Menge abgerufen, offenbar von fremden Seiten, die ihn aus dem Bundle übernommen haben. Ohne nginx-Zugriffsprotokoll ließen sie sich bisher nur an der IP erkennen. Zugriffe über die Website-Sitzung bleiben ohne diese Angaben.
