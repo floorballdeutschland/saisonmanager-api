@@ -225,7 +225,7 @@ class ApplicationController < ActionController::Base
     endpoint = "#{controller_name}##{action_name}"
     if api_key_request?
       ApiKeyUsage.increment!(api_key_id: @authenticated_api_key.id, endpoint: endpoint)
-      log_public_access("api_key=#{@authenticated_api_key.id}", endpoint)
+      log_public_access("api_key=#{@authenticated_api_key.id}", endpoint, origin: true)
     elsif @public_session
       PublicSessionUsage.increment!(endpoint: endpoint)
       # Nur ein Präfix der Kennung: Es reicht, um die Abrufe einer Sitzung
@@ -235,8 +235,33 @@ class ApplicationController < ActionController::Base
     end
   end
 
-  def log_public_access(via, endpoint)
-    Rails.logger.info("public-access #{via} ip=#{request.remote_ip} endpoint=#{endpoint}")
+  # Bei Key-Zugriffen zusätzlich Origin, Referer und User-Agent: Der
+  # frühere Frontend-Key stand im Bundle und wird von fremden Seiten
+  # weiterbenutzt, die sich nur an diesen Kopfzeilen erkennen lassen
+  # (Prod führt kein nginx-Zugriffsprotokoll). Sitzungen bleiben ohne, das
+  # sind Besucher der eigenen Website.
+  #
+  # Der Referer ohne Query und Fragment: Sekretariats-, Overlay- und
+  # Editor-Links tragen ihr Token als `?token=`, und ein Browser mit altem
+  # Bundle schickt die volle Adresse mit.
+  def log_public_access(via, endpoint, origin: false)
+    line = "public-access #{via} ip=#{request.remote_ip} endpoint=#{endpoint}"
+    if origin
+      referer = request.referer.to_s.split(/[?#]/, 2).first
+      line += " origin=#{log_header(request.origin)} referer=#{log_header(referer)} " \
+              "ua=#{log_header(request.user_agent)}"
+    end
+    Rails.logger.info(line)
+  end
+
+  # Erst bereinigen, dann kürzen: Steuerzeichen, Anführungszeichen und
+  # ungültige Bytes werden zu `?`, damit ein Client die Zeile weder sprengen
+  # noch über Escapes über die 200 Zeichen hinaus aufblähen kann.
+  def log_header(value)
+    return '-' if value.blank?
+
+    cleaned = value.to_s.dup.force_encoding(Encoding::UTF_8).scrub('?').gsub(/[[:cntrl:]"\\]/, '?')
+    "\"#{cleaned.first(200)}\""
   end
 
   def current_user
