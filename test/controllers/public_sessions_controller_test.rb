@@ -125,6 +125,54 @@ class PublicSessionsControllerTest < ActionDispatch::IntegrationTest
     assert_match(/public-access public_session=#{session_prefix} ip=127\.0\.0\.1 endpoint=game_operations#index/, log)
   end
 
+  # Der fruehere Frontend-Key wird von fremden Seiten weiterbenutzt; erkennen
+  # lassen sie sich nur an diesen Kopfzeilen.
+  test 'ein Key-Zugriff steht mit Origin, Referer und User-Agent im Log' do
+    raw_key, api_key = ApiKey.generate(name: 'Integration')
+
+    log = capture_log do
+      get PUBLIC_PATH, headers: {
+        'HTTP_X_API_KEY' => raw_key,
+        'HTTP_ORIGIN' => 'https://verein.example',
+        'HTTP_REFERER' => 'https://verein.example/spielplan?token=geheim#tabelle',
+        'HTTP_USER_AGENT' => "Widget/1.0 #{'x' * 300}"
+      }
+    end
+
+    line = log.lines.grep(/public-access api_key=#{api_key.id} /).first
+    assert line, 'keine public-access-Zeile fuer den Key'
+    refute_includes line, 'geheim'
+    assert_includes line, 'origin="https://verein.example" referer="https://verein.example/spielplan"'
+    assert_match(%r{ua="Widget/1\.0 x{189}"$}, line.chomp)
+  end
+
+  test 'fehlende Kopfzeilen stehen als Strich im Log, Sitzungen ohne Herkunft' do
+    raw_key, api_key = ApiKey.generate(name: 'Integration')
+
+    log = capture_log do
+      get PUBLIC_PATH, headers: { 'HTTP_X_API_KEY' => raw_key, 'HTTP_USER_AGENT' => '' }
+      post '/api/v2/public_session'
+      get PUBLIC_PATH, headers: { 'HTTP_REFERER' => 'https://saisonmanager.de/' }
+    end
+
+    assert_match(/public-access api_key=#{api_key.id} .* origin=- referer=- ua=-$/, log)
+    session_line = log.lines.grep(/public-access public_session=/).first
+    assert session_line, 'keine public-access-Zeile fuer die Sitzung'
+    assert_no_match(/referer|origin|ua=/, session_line)
+  end
+
+  test 'Steuerzeichen und Anfuehrungszeichen in Kopfzeilen sprengen die Logzeile nicht' do
+    raw_key, = ApiKey.generate(name: 'Integration')
+
+    log = capture_log do
+      get PUBLIC_PATH, headers: { 'HTTP_X_API_KEY' => raw_key, 'HTTP_USER_AGENT' => "a\"b\tc\xFF".b * 100 }
+    end
+
+    line = log.lines.grep(/public-access api_key=/).first
+    assert line, 'keine public-access-Zeile fuer den Key'
+    assert_match(/ua="(a\?b\?c\?){33}a\?"$/, line.chomp)
+  end
+
   test 'angemeldete Zugriffe erscheinen nicht als oeffentlicher Zugriff im Log' do
     user = create(:user, :admin)
     post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
