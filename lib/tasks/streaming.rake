@@ -61,6 +61,19 @@ namespace :streaming do
     begin
       ergebnis = watchdog.run
     rescue YoutubeLiveApi::Error => e
+      # Was der Lauf bis zum Abbruch gesammelt hat, trotzdem zustellen: Die
+      # offenen Zusagen werden vor `active_broadcasts` geprüft und nur einmal
+      # gemeldet. Ginge die Meldung hier unter, kaeme sie nie.
+      if watchdog.probleme.present?
+        watchdog.probleme.each { |problem| warn "  PROBLEM: #{problem}" }
+        if defined?(Sentry)
+          Sentry.capture_message('Livestream-Waechter meldet Probleme',
+                                 level: :warning,
+                                 extra: { probleme: watchdog.probleme,
+                                          anzahl: watchdog.probleme.size })
+        end
+        watchdog.offene_zusagen_als_gemeldet_stempeln!
+      end
       # Sichtbar scheitern: Kontingent erschöpft oder Token widerrufen heißt,
       # dass ab jetzt keine Übertragung mehr beendet wird. Das darf nicht als
       # stiller Fehlschlag im Log verschwinden.
@@ -130,6 +143,9 @@ namespace :streaming do
                                       anzahl: ergebnis[:problems].size })
       Sentry.close
     end
+    # Erst nach der Zustellung (stderr oben, Sentry hier), siehe
+    # StreamWatchdog#melde_offene_zusagen.
+    watchdog.offene_zusagen_als_gemeldet_stempeln!
     abort "#{ergebnis[:problems].size} Problem(e), siehe oben."
   end
 

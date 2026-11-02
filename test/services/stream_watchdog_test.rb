@@ -865,6 +865,58 @@ class StreamWatchdogTest < ActiveSupport::TestCase
     assert(ergebnis[:problems].any? { |p| p.include?('Zusage seit ueber') })
   end
 
+  # Gemeldet wurde frueher bei JEDEM Lauf, alle fuenf Minuten ohne Ende: 16 alte
+  # Zusagen ergaben ueber 3700 Sentry-Ereignisse.
+  test 'eine offene Zusage wird nach dem Stempeln nur einmal gemeldet' do
+    satz = zusage_satz(ended_at: nil)
+    satz.update!(created_at: @now - 2.days)
+
+    erster = StreamWatchdog.new(api: FakeApi.new, now: @now)
+    erster.run
+    erster.offene_zusagen_als_gemeldet_stempeln!
+    ergebnis = StreamWatchdog.new(api: FakeApi.new, now: @now + 5.minutes).run
+
+    assert_equal @now.to_i, satz.reload.overdue_reported_at.to_i
+    assert(ergebnis[:problems].none? { |p| p.include?('Zusage seit ueber') })
+  end
+
+  # Bricht der Lauf nach der Pruefung ab (Kontingent, Token), stellt der
+  # Rake-Task die Meldung im rescue zu. Ohne Zustellung kein Stempel.
+  test 'GEGENPROBE: der Lauf allein stempelt nicht' do
+    satz = zusage_satz(ended_at: nil)
+    satz.update!(created_at: @now - 2.days)
+
+    StreamWatchdog.new(api: FakeApi.new, now: @now).run
+
+    assert_nil satz.reload.overdue_reported_at
+  end
+
+  test 'GEGENPROBE: der Probelauf stempelt die Meldung nicht' do
+    satz = zusage_satz(ended_at: nil)
+    satz.update!(created_at: @now - 2.days)
+
+    probe = StreamWatchdog.new(api: FakeApi.new, now: @now, dry_run: true)
+    probe.run
+    probe.offene_zusagen_als_gemeldet_stempeln!
+
+    assert_nil satz.reload.overdue_reported_at
+  end
+
+  # Tage vorher angelegt, von der Buchhaltung geschlossen und schon als offen
+  # gemeldet; am Spieltag laeuft sie doch. Scheitert die Einloesung danach,
+  # muss das wieder gemeldet werden.
+  test 'eine wiederbelebte Uebertragung verliert den Meldestempel' do
+    satz = zusage_satz(ended_at: @now - 8.days, last_active_at: nil)
+    satz.update!(ended_reason: StreamWatchdog::BOOKKEEPING_REASON,
+                 overdue_reported_at: @now - 1.day, created_at: @now - 9.days)
+
+    StreamWatchdog.new(api: api_mit(status: 'active'), now: @now).run
+
+    satz.reload
+    assert_not satz.ended?
+    assert_nil satz.overdue_reported_at
+  end
+
   test 'GEGENPROBE: ohne Zusage wird nichts veroeffentlicht' do
     satz = zusage_satz(ended_at: @now - 1.day, promote_to_public: false)
     api = FakeApi.new
