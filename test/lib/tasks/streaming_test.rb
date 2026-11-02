@@ -90,6 +90,27 @@ class StreamingTaskTest < ActiveSupport::TestCase
     vorher.each { |key, wert| wert.nil? ? ENV.delete(key) : ENV[key] = wert }
   end
 
+  # Die offene Zusage wird vor `active_broadcasts` geprueft und nur einmal
+  # gemeldet. Bricht der Lauf danach an YouTube ab (Kontingent, Token), muss die
+  # Meldung trotzdem zugestellt werden, und erst danach wird gestempelt.
+  test 'der Watchdog stellt eine offene Zusage auch beim Abbruch zu' do
+    satz = StreamBroadcast.create!(broadcast_id: 'bc-zusage', title: 'Heim vs Gast',
+                                   promote_to_public: true, created_at: 2.days.ago)
+    api = Object.new
+    def api.active_broadcasts = raise(YoutubeLiveApi::QuotaExceeded, 'quotaExceeded')
+    original = StreamWatchdog.method(:new)
+
+    ausgabe, status = YoutubeLiveApi.stub(:configured?, true) do
+      StreamWatchdog.stub(:new, ->(**kw) { original.call(api: api, **kw) }) do
+        run_task('streaming:watchdog')
+      end
+    end
+
+    assert_not_equal 0, status
+    assert_match(/Zusage seit ueber 24 h offen und nicht eingeloest: bc-zusage/, ausgabe)
+    assert_not_nil satz.reload.overdue_reported_at
+  end
+
   # Ein deutsches Excel exportiert mit Semikolon. Mit fest verdrahtetem Komma
   # wäre JEDE Spalte nil, jede Zeile würde still übersprungen, und die Ausgabe
   # lautete "0 Schlüssel gesetzt, 0 unverändert" -- von einem echten "alles schon

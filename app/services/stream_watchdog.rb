@@ -84,6 +84,9 @@ class StreamWatchdog
     # Fehlercode und meldet nach Sentry -- eine Logzeile unter dreihundert
     # anderen erreicht niemanden.
     @probleme = []
+    # Ids der in diesem Lauf gemeldeten offenen Zusagen, gestempelt erst nach
+    # der Zustellung (siehe #melde_offene_zusagen).
+    @offene_zusagen = []
   end
 
   # Liefert eine Zusammenfassung für die Ausgabe des Rake-Tasks.
@@ -106,6 +109,15 @@ class StreamWatchdog
     # Aufzeichnung, die StreamChapters eben erst gespeichert haben kann.
     ergebnis[:highlight_links] = verschicke_highlight_links
     ergebnis
+  end
+
+  # Nach der Zustellung der Meldung aufrufen. Im Probelauf nicht: Er
+  # verschluckte sonst die Meldung des echten Laufs.
+  def offene_zusagen_als_gemeldet_stempeln!
+    return if @dry_run || @offene_zusagen.empty?
+
+    StreamBroadcast.where(id: @offene_zusagen).update_all(overdue_reported_at: @now)
+    @offene_zusagen = []
   end
 
   private
@@ -548,6 +560,11 @@ class StreamWatchdog
   # Eine Meldung, die nie aufhoert, liest ohnehin niemand mehr. Wer eine Zusage
   # nachtraeglich einloest, setzt `promoted_at`; eine erneute Meldung braucht es
   # dafuer nicht.
+  #
+  # Gestempelt wird hier NICHT, sondern erst nach der Zustellung
+  # (#offene_zusagen_als_gemeldet_stempeln, aufgerufen vom Rake-Task): Bricht
+  # der Lauf danach ab, etwa an `active_broadcasts`, waere die Zusage sonst
+  # gestempelt und nie gemeldet.
   def melde_offene_zusagen
     offen = StreamBroadcast.where(promote_to_public: true, promoted_at: nil, overdue_reported_at: nil)
                            .where(created_at: ..(@now - PROMOTE_OVERDUE))
@@ -556,9 +573,7 @@ class StreamWatchdog
     offen.find_each do |satz|
       problem("Zusage seit ueber #{(PROMOTE_OVERDUE / 1.hour).to_i} h offen und nicht eingeloest: " \
               "#{satz.broadcast_id} (#{satz.title})")
-      # Im Probelauf nicht stempeln, sonst verschluckte er die Meldung des
-      # echten Laufs.
-      satz.update_column(:overdue_reported_at, @now) unless @dry_run
+      @offene_zusagen << satz.id
     end
   end
 
@@ -627,7 +642,11 @@ class StreamWatchdog
 
     if satz.ended?
       if satz.ended_reason == BOOKKEEPING_REASON
-        satz.assign_attributes(ended_at: nil, ended_reason: nil)
+        # Auch die Meldung der offenen Zusage zuruecksetzen: Ein Satz, der Tage
+        # vorher angelegt und von der Buchhaltung geschlossen wurde, kann schon
+        # als offen gemeldet sein. Scheitert die Einloesung nach dem echten
+        # Senden, muss das wieder gemeldet werden.
+        satz.assign_attributes(ended_at: nil, ended_reason: nil, overdue_reported_at: nil)
       else
         # KARENZ, sonst meldet der Normalfall einen Fehler: Die Transition zu
         # `complete` ist bei YouTube nicht sofort sichtbar, der nächste Lauf
