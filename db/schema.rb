@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_29_140000) do
+ActiveRecord::Schema[7.2].define(version: 2026_11_02_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1254,6 +1254,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_29_140000) do
     t.bigint "calibrated_by_user_id", comment: "NULL bei Kalibrierung über den Mail-Link"
     t.string "calibrated_via", comment: "link / user"
     t.datetime "highlight_fallback_at", comment: "Ersatzweg Highlight-Link an das Tablet-Konto geprüft; NULL = noch nicht"
+    t.datetime "overdue_reported_at", comment: "Offene Zusage einmal gemeldet (StreamWatchdog#melde_offene_zusagen)"
     t.index ["broadcast_id"], name: "index_stream_broadcasts_on_broadcast_id", unique: true
     t.index ["ended_at"], name: "index_stream_broadcasts_on_ended_at"
     t.index ["game_id"], name: "index_stream_broadcasts_on_game_id"
