@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Livestream-Wächter meldet eine offene Zusage nur noch einmal**: Eine nie eingelöste Zusage (nicht gelistete Übertragung, die nach dem Spiel öffentlich werden sollte) meldete der Wächter bei jedem Lauf erneut nach Sentry, alle fünf Minuten und ohne Ende. 16 alte Zusagen vom 26.09. bis 25.10. erzeugten so über 3700 Ereignisse und verbrauchten das Sentry-Kontingent, das sich API und Frontend teilen; zuletzt wurden zwei Drittel aller Fehler verworfen. Neu merkt sich `stream_broadcasts.overdue_reported_at` die Meldung, jede Zusage erscheint genau einmal. Der Probelauf stempelt nicht.
+
 ## [2.6.1] - 2026-10-30
 
 ### Verbessert

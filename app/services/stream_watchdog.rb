@@ -540,14 +540,25 @@ class StreamWatchdog
   # Browser nie melden konnte, ein nicht eingetragener Cronjob. Niemand wartet
   # auf ein Video, das er nicht sieht; ohne diese Meldung merkt es erst der
   # Verein, dem etwas zugesagt wurde.
+  #
+  # EINMAL je Zusage: Ohne den Stempel `overdue_reported_at` meldete jeder Lauf
+  # dieselben Saetze erneut, alle fuenf Minuten und ohne Ende. 16 alte Zusagen
+  # erzeugten so ueber 3700 Sentry-Ereignisse und frassen das Kontingent, das
+  # sich API und Frontend teilen; echte Fehler fielen dadurch unter den Tisch.
+  # Eine Meldung, die nie aufhoert, liest ohnehin niemand mehr. Wer eine Zusage
+  # nachtraeglich einloest, setzt `promoted_at`; eine erneute Meldung braucht es
+  # dafuer nicht.
   def melde_offene_zusagen
-    offen = StreamBroadcast.where(promote_to_public: true, promoted_at: nil)
+    offen = StreamBroadcast.where(promote_to_public: true, promoted_at: nil, overdue_reported_at: nil)
                            .where(created_at: ..(@now - PROMOTE_OVERDUE))
                            .where('ended_at IS NULL OR ended_at < ?', @now - PROMOTE_MAX_AGE)
 
     offen.find_each do |satz|
       problem("Zusage seit ueber #{(PROMOTE_OVERDUE / 1.hour).to_i} h offen und nicht eingeloest: " \
               "#{satz.broadcast_id} (#{satz.title})")
+      # Im Probelauf nicht stempeln, sonst verschluckte er die Meldung des
+      # echten Laufs.
+      satz.update_column(:overdue_reported_at, @now) unless @dry_run
     end
   end
 

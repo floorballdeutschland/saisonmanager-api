@@ -865,6 +865,30 @@ class StreamWatchdogTest < ActiveSupport::TestCase
     assert(ergebnis[:problems].any? { |p| p.include?('Zusage seit ueber') })
   end
 
+  # Gemeldet wurde frueher bei JEDEM Lauf, alle fuenf Minuten ohne Ende: 16 alte
+  # Zusagen ergaben ueber 3700 Sentry-Ereignisse.
+  test 'eine offene Zusage wird nur einmal gemeldet' do
+    satz = zusage_satz(ended_at: nil)
+    satz.update!(created_at: @now - 2.days)
+
+    StreamWatchdog.new(api: FakeApi.new, now: @now).run
+    ergebnis = StreamWatchdog.new(api: FakeApi.new, now: @now + 5.minutes).run
+
+    assert_equal @now.to_i, satz.reload.overdue_reported_at.to_i
+    assert(ergebnis[:problems].none? { |p| p.include?('Zusage seit ueber') })
+  end
+
+  test 'GEGENPROBE: der Probelauf stempelt die Meldung nicht' do
+    satz = zusage_satz(ended_at: nil)
+    satz.update!(created_at: @now - 2.days)
+
+    StreamWatchdog.new(api: FakeApi.new, now: @now, dry_run: true).run
+    ergebnis = StreamWatchdog.new(api: FakeApi.new, now: @now + 5.minutes).run
+
+    assert(ergebnis[:problems].any? { |p| p.include?('Zusage seit ueber') })
+    assert_not_nil satz.reload.overdue_reported_at
+  end
+
   test 'GEGENPROBE: ohne Zusage wird nichts veroeffentlicht' do
     satz = zusage_satz(ended_at: @now - 1.day, promote_to_public: false)
     api = FakeApi.new
