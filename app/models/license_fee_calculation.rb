@@ -2,7 +2,12 @@ class LicenseFeeCalculation < ApplicationRecord
   require 'csv'
   require 'json'
 
-  attr_accessor :interal_hash, :other_hash, :prefix
+  # Kennzeichnet eine Lizenz, die die Abrechnung einer zusammengefuehrten
+  # Dublette ihrem Master zurechnet (siehe merged_duplicate_licenses). Wird nur
+  # im Speicher gesetzt, nie gespeichert.
+  MERGED_FROM_KEY = 'merged_from_id'.freeze
+
+  attr_accessor :interal_hash, :other_hash, :prefix, :merge_warnings
 
   def self.load_saved(id)
     c = LicenseFeeCalculation.find id
@@ -36,8 +41,12 @@ class LicenseFeeCalculation < ApplicationRecord
     c.prefix = "#{c.started_at.strftime('%Y%m%d%I%M%S')}_license_fee_calculation"
     c.save
 
-    players = Player.all
+    # Zusammengefuehrte Dubletten zaehlen nicht als eigene Spieler: Ihre Lizenzen
+    # gehoeren dem Master (siehe merged_duplicate_licenses).
+    players = Player.where(merged_into_id: nil)
     count = players.count
+    extra_licenses, c.merge_warnings = merged_duplicate_licenses(season)
+    c.merge_warnings.each { |w| Rails.logger.warn("LicenseFeeCalculation: #{w}") }
 
     c.interal_hash = []
     c.other_hash = []
@@ -45,14 +54,80 @@ class LicenseFeeCalculation < ApplicationRecord
     players.each_with_index.each do |p, i|
       percent = 100.0 * (i + 1) / count
       c.update(current_dataset: p.id, percent:)
-      c.interal_hash << p.main_license_hash(season)
-      c.other_hash << p.secondary_license_hash(season)
+      extra = extra_licenses.fetch(p.id, [])
+      c.interal_hash << p.main_license_hash(season, extra_licenses: extra)
+      c.other_hash << p.secondary_license_hash(season, extra_licenses: extra)
     end
 
     c.other_hash = c.other_hash.flatten.compact
 
     c
   end
+
+  # Regel: Wird eine Dublette zusammengefuehrt, zaehlen alle ihre Lizenzen, als
+  # gehoerten sie dem Master. Ist der Master selbst spaeter zusammengefuehrt
+  # worden, ist der Endpunkt der Kette gemeint.
+  #
+  # `merge_into!` kopiert die Lizenzen auf den Master (`_merge_licenses`): mit
+  # derselben ID, oder bei derselben Mannschaft in dessen Lizenz eingemischt. Die
+  # Dublette behaelt ihre Eintraege (geloescht, abgelehnte bleiben abgelehnt).
+  # Bis hierher lief die Abrechnung ueber `Player.all` und berechnete solche
+  # Lizenzen deshalb zweimal voll, einmal beim Master und einmal bei der
+  # Dublette (Stichtag 31.10.2026: fuenf Dubletten, 70 EUR).
+  #
+  # Dieselbe Lizenz ist eine mit gleicher ID oder fuer dieselbe Mannschaft (die
+  # Mannschaft legt die Saison fest). Sie faellt weg. Fehlt eine Lizenz der
+  # Dublette beim Master, etwa nach einer frueheren Zusammenfuehrung ohne
+  # Lizenzuebernahme, wird sie ihm hier zugerechnet: Haupt- oder Zusatzlizenz
+  # entscheidet sich dann zusammen mit seinen eigenen. Das ist ein Datenfehler,
+  # deshalb gibt es dazu eine Warnung.
+  #
+  # Rueckgabe: [{ master_id => [Lizenz, ...] }, [Warnung, ...]]
+  def self.merged_duplicate_licenses(season)
+    duplicates = Player.where.not(merged_into_id: nil).to_a
+    return [{}, []] if duplicates.empty?
+
+    target_of = duplicates.to_h { |d| [d.id, d.merged_into_id] }
+    end_of_chain = lambda do |id|
+      seen = Set.new
+      id = target_of[id] while target_of.key?(id) && seen.add?(id)
+      id
+    end
+    masters = Player.where(id: duplicates.map { |d| end_of_chain.call(d.id) }.uniq).index_by(&:id)
+
+    extras = Hash.new { |h, k| h[k] = [] }
+    warnings = []
+    duplicates.each do |dup|
+      master = masters[end_of_chain.call(dup.id)]
+      dup_licenses = Array(dup.billable_licenses(season))
+      next if dup_licenses.empty?
+
+      unless master && master.merged_into_id.nil?
+        warnings << "Dublette ##{dup.id}: Master ##{dup.merged_into_id} nicht auffindbar, " \
+                    "#{dup_licenses.size} Lizenz(en) nicht berechnet"
+        next
+      end
+
+      known = Array(master.current_licenses(season)) + extras[master.id]
+      dup_licenses.each do |lic|
+        next if known.any? { |k| same_license?(k, lic) }
+
+        copy = lic.deep_dup.merge(MERGED_FROM_KEY => dup.id)
+        extras[master.id] << copy
+        known << copy
+        warnings << "Lizenz #{lic['id']} (Team #{lic['team_id']}) der Dublette ##{dup.id} fehlt beim " \
+                    "Master ##{master.id} und wird ihm zugerechnet"
+      end
+    end
+
+    [extras.to_h, warnings]
+  end
+
+  def self.same_license?(known, candidate)
+    (known['id'].present? && known['id'] == candidate['id']) ||
+      known['team_id'].to_i == candidate['team_id'].to_i
+  end
+  private_class_method :same_license?
 
   def save_files
     save_json
@@ -150,7 +225,8 @@ class LicenseFeeCalculation < ApplicationRecord
 
   def table_fields
     %w[id first_name last_name birthdate gender home_club_id home_club home_club_operation home_club_state clubs club_ids
-       license_id team_id league_id league_class_id league_class league_category_id league_category license_clubs license_club license_club_state history]
+       license_id team_id league_id league_class_id league_class league_category_id league_category license_clubs license_club license_club_state history
+       merged_from_id]
   end
 end
 
