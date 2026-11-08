@@ -31,7 +31,7 @@ class HighlightEditor
   class Invalid < StandardError; end
 
   # Was ein Tor-Schuss werden kann, der doch keiner war.
-  ERGEBNISSE_OHNE_TOR = %w[saved missed blocked].freeze
+  ERGEBNISSE_OHNE_TOR = %w[saved missed blocked post].freeze
 
   attr_reader :game
 
@@ -118,9 +118,11 @@ class HighlightEditor
     }
   end
 
-  # "1:0 Müller (Schmidt)" wie in den Sprungmarken, sonst "Vorgemerkte Szene".
+  # "1:0 Müller (Schmidt)" wie in den Sprungmarken, sonst "Aluminium" oder
+  # "Vorgemerkte Szene".
   def label(scene)
     return 'Tor-Schuss ohne Tor im Bericht' if scene[:kind] == 'unlinked'
+    return 'Aluminium' if scene[:kind] == 'post'
     return 'Vorgemerkte Szene' unless scene[:kind] == 'goal'
 
     event = tore.find { |e| e[:event_id].to_i == scene[:event_id] }

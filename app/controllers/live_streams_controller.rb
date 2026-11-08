@@ -239,8 +239,8 @@ class LiveStreamsController < ApplicationController
   # Vorauswahl in zwei Abfragen für alle Spiele zusammen, damit GameHighlights
   # (je Spiel mehrere Abfragen) nur für Spiele läuft, die überhaupt eine Szene
   # haben können: im Tabletmodus erfasst, eine Übertragung mit bekanntem Start
-  # und eine öffentliche Szene (verknüpfter Tor-Schuss oder vorgemerkte Szene
-  # mit `in_highlights`). Ein Preload von `game_shots` und `stream_broadcasts`
+  # und eine öffentliche Szene (verknüpfter Tor-Schuss, Aluminiumtreffer oder
+  # vorgemerkte Szene mit `in_highlights`). Ein Preload von `game_shots` und `stream_broadcasts`
   # hülfe nicht: GameHighlights und StreamTimeline fragen über eigene Scopes
   # ab und gingen am Preload vorbei. Alle anderen Spiele sind sofort false.
   def highlight_candidates(games)
@@ -251,7 +251,8 @@ class LiveStreamsController < ApplicationController
     return Set.new if mit_start.empty?
 
     GameShot.where(game_id: mit_start, in_highlights: true)
-            .and(GameShot.marks.or(GameShot.shots.linked.where(result: 'goal')))
+            .and(GameShot.marks.or(GameShot.shots.linked.where(result: 'goal'))
+                                   .or(GameShot.shots.where(result: 'post')))
             .distinct.pluck(:game_id).to_set
   end
 

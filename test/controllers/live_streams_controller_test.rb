@@ -417,6 +417,15 @@ class LiveStreamsControllerTest < ActionDispatch::IntegrationTest
     assert_equal false, eintrag_von(spiel)['has_highlights']
   end
 
+  test 'ein Aluminiumtreffer allein reicht fuer has_highlights (fe#651)' do
+    spiel = tablet_spiel(ended: true)
+    spiel.game_shots.update_all(result: 'post', event_id: nil)
+
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    assert_equal true, eintrag_von(spiel)['has_highlights']
+  end
+
   test 'ohne Uebertragung mit bekanntem Start ist has_highlights false' do
     spiel = tablet_spiel(ended: true)
     StreamBroadcast.where(game_id: spiel.id).update_all(actual_start_at: nil)

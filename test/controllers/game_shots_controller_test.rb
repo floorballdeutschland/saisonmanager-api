@@ -461,7 +461,7 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes response.body, 'Geheim'
 
     heim = stats['teams']['home']
-    assert_equal({ 'shots' => 4, 'on_goal' => 3, 'goals' => 1, 'blocked' => 1, 'missed' => 0, 'free_hits' => 0,
+    assert_equal({ 'shots' => 4, 'on_goal' => 3, 'goals' => 1, 'blocked' => 1, 'missed' => 0, 'posts' => 0, 'free_hits' => 0,
                    'shots_from_free_hit' => 0, 'goals_from_free_hit' => 0, 'penalty_shots' => 0, 'goals_from_penalty_shot' => 0, 'goals_empty_net' => 0, 'goals_extra_attacker' => 0 }.merge(ohne_torhueter_null),
                  heim.except('by_period'))
     assert_equal 2, heim['by_period']['2']['shots']
@@ -567,13 +567,30 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
                  stats['free_hits']
 
     heim = stats['teams']['home']
-    assert_equal({ 'shots' => 3, 'on_goal' => 2, 'goals' => 1, 'blocked' => 0, 'missed' => 1, 'free_hits' => 1,
+    assert_equal({ 'shots' => 3, 'on_goal' => 2, 'goals' => 1, 'blocked' => 0, 'missed' => 1, 'posts' => 0, 'free_hits' => 1,
                    'shots_from_free_hit' => 2, 'goals_from_free_hit' => 1, 'penalty_shots' => 0, 'goals_from_penalty_shot' => 0, 'goals_empty_net' => 0, 'goals_extra_attacker' => 0 }.merge(ohne_torhueter_null),
                  heim.except('by_period'))
     assert_equal %w[1 3], heim['by_period'].keys, 'Abschnitte nur mit Freischlag zählen mit'
     assert_equal 1, stats['teams']['guest']['by_period']['3']['free_hits']
     assert_equal 0, stats['teams']['guest']['shots']
     assert_empty stats['goalkeepers']
+  end
+
+  # --- Aluminium (fe#651) ------------------------------------------------------------
+
+  test 'detailed_stats: Aluminium zählt als Schuss, aber nicht aufs Tor und nicht beim Torhüter' do
+    @game.update!(ended: true, players: { 'home' => [], 'guest' => [{ 'player_id' => 501, 'trikot_number' => 1 }] })
+    post_shots([shot('p1', result: 'post', goalie: 501),
+                shot('s1', result: 'saved', goalie: 501, at: @t0 + 5)])
+
+    assert_response :success
+    get "/api/v2/games/#{@game.id}/detailed_stats.json", headers: { 'X-Api-Key' => API_KEY }
+
+    heim = response.parsed_body['teams']['home']
+    assert_equal [2, 1, 1, 0], heim.values_at('shots', 'on_goal', 'posts', 'missed')
+    torhueter = response.parsed_body['goalkeepers'].first
+    assert_equal 1, torhueter['saves']
+    assert_equal 1, torhueter['shots_against'], 'Aluminium belastet die Fangquote nicht'
   end
 
   # --- Szene vormerken (fe#560) ------------------------------------------------------

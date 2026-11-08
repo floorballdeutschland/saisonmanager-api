@@ -15,6 +15,7 @@
 # AUSWAHL UND VORGEMERKTE SZENEN (fe#560): Öffentlich erscheinen nur Szenen
 # mit `in_highlights`. Dazu kommen die im Tablet vorgemerkten Szenen
 # (`kind: 'mark'`) mit `kind: 'mark'` im JSON; Tor-Szenen tragen `kind: 'goal'`.
+# Aluminiumtreffer (`result: 'post'`, fe#651) tragen `kind: 'post'`.
 # Freischläge sind nie eine Szene. Der Szenen-Editor (HighlightEditor) liest
 # mit `include_hidden: true` auch die abgewählten.
 #
@@ -98,7 +99,11 @@ class GameHighlights
       fenster = timeline.scene(mark.anchor_at)
       fenster && [editor_felder(mark_json(mark.shot, *fenster), mark.shot), mark.shot, mark.anchor_at]
     end
-    (tore + marken).sort_by { |scene, _shot, _anker| scene[:start] }
+    alu = timeline.posts.filter_map do |post|
+      fenster = timeline.scene(post.anchor_at)
+      fenster && [editor_felder(post_json(post.shot, *fenster), post.shot), post.shot, post.anchor_at]
+    end
+    (tore + marken + alu).sort_by { |scene, _shot, _anker| scene[:start] }
   end
 
   def versteckt?(anchor_at, shot)
@@ -129,6 +134,19 @@ class GameHighlights
       team: shot.team,
       period: shot.period,
       game_time: shot.game_time.to_s
+    }
+  end
+
+  def post_json(shot, start, ende)
+    {
+      kind: 'post',
+      event_id: nil,
+      start: start,
+      end: ende,
+      team: shot.team,
+      period: shot.period,
+      game_time: shot.game_time.to_s,
+      shooter: shot.shooter_player_id ? @names.ref(shot.team, shot.shooter_player_id) : nil
     }
   end
 

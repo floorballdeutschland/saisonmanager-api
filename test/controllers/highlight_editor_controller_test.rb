@@ -236,6 +236,18 @@ class HighlightEditorControllerTest < ActionDispatch::IntegrationTest
     assert_equal(%w[s2 s3], response.parsed_body['scenes'].select { |s| s['kind'] == 'goal' }.pluck('client_uuid'))
   end
 
+  test 'Zuordnung macht einen Fehltipper zum Aluminiumtreffer, der als Szene bleibt (fe#651)' do
+    zwei_tore_und_ein_fehltipper
+
+    put "/api/v2/highlight_editor.json?token=#{gesendeter_token}",
+        params: { assignments: [{ client_uuid: 's3', event_id: nil, result: 'post' }] }, as: :json
+
+    assert_response :success
+    assert_equal 'post', GameShot.find_by(client_uuid: 's3').result
+    szene = response.parsed_body['scenes'].find { |s| s['client_uuid'] == 's3' }
+    assert_equal %w[post Aluminium], szene.values_at('kind', 'label')
+  end
+
   test 'Zuordnung an ein belegtes Tor löst den bisherigen Schuss' do
     zwei_tore_und_ein_fehltipper
 

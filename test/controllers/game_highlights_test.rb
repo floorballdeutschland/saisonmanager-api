@@ -68,6 +68,23 @@ class GameHighlightsTest < ActionDispatch::IntegrationTest
     assert_not_includes response.body, 'm2'
   end
 
+  test 'Aluminiumtreffer erscheinen als kind post, abgewählte und Fehlschüsse nicht (fe#651)' do
+    GameShot.create!(game: @game, client_uuid: 'p1', team: 'home', period: 2, game_time: '04:00',
+                     tapped_at: @start + 44.minutes, x: 0.9, y: 0.4, result: 'post', shooter_player_id: nil)
+    GameShot.create!(game: @game, client_uuid: 'p2', team: 'home', period: 2, tapped_at: @start + 47.minutes,
+                     x: 0.9, y: 0.4, result: 'post', in_highlights: false)
+    GameShot.create!(game: @game, client_uuid: 'x1', team: 'home', period: 2, tapped_at: @start + 46.minutes,
+                     x: 0.9, y: 0.4, result: 'missed')
+
+    get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
+
+    scenes = response.parsed_body['scenes']
+    assert_equal(%w[goal post goal], scenes.map { |s| s['kind'] })
+    alu = scenes[1]
+    assert_equal [2640 - 15, 2640 + 5, 'home', 2, '04:00'], alu.values_at('start', 'end', 'team', 'period', 'game_time')
+    assert_nil alu['shooter'], 'nicht angegebener Schütze'
+  end
+
   test 'kalibriert: 20-s-Fenster um die verschobene Stelle (fe#560)' do
     @broadcast.update!(offset_seconds: 20)
 

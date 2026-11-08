@@ -100,6 +100,13 @@ class StreamTimeline
     @marks ||= game.game_shots.marks.order(:tapped_at, :id).map { |shot| Mark.new(shot: shot, anchor_at: shot.tapped_at) }
   end
 
+  # Aluminiumtreffer (`result: 'post'`), als Mark wie die vorgemerkten Szenen:
+  # Anker ist der Zeitpunkt des Antippens. Nur Highlights, keine Sprungmarken.
+  def posts
+    @posts ||= game.game_shots.shots.where(result: 'post').order(:tapped_at, :id)
+                   .map { |shot| Mark.new(shot: shot, anchor_at: shot.tapped_at) }
+  end
+
   def offset
     broadcast.offset_seconds.to_i
   end
