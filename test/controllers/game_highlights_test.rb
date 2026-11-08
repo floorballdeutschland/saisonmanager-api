@@ -85,6 +85,21 @@ class GameHighlightsTest < ActionDispatch::IntegrationTest
     assert_nil alu['shooter'], 'nicht angegebener Schütze'
   end
 
+  test 'Aluminium-Szene nennt den Schützen des schießenden Teams, gesperrter Nachname bleibt draußen (fe#651)' do
+    spieler = create(:player, public_last_name_hidden_at: Time.current)
+    @game.players['home'][1]['player_id'] = spieler.id
+    @game.save!
+    PublicPlayerNames.flush!
+    GameShot.create!(game: @game, client_uuid: 'p1', team: 'home', period: 2, tapped_at: @start + 44.minutes,
+                     x: 0.9, y: 0.4, result: 'post', shooter_player_id: spieler.id)
+
+    get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
+
+    alu = response.parsed_body['scenes'].find { |s| s['kind'] == 'post' }
+    assert_equal({ 'trikot_number' => 9, 'name' => 'Tom' }, alu['shooter'])
+    assert_not_includes response.body, 'Schmidt'
+  end
+
   test 'kalibriert: 20-s-Fenster um die verschobene Stelle (fe#560)' do
     @broadcast.update!(offset_seconds: 20)
 

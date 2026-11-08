@@ -240,8 +240,8 @@ class LiveStreamsController < ApplicationController
   # (je Spiel mehrere Abfragen) nur für Spiele läuft, die überhaupt eine Szene
   # haben können: im Tabletmodus erfasst, eine Übertragung mit bekanntem Start
   # und eine öffentliche Szene (verknüpfter Tor-Schuss, Aluminiumtreffer oder
-  # vorgemerkte Szene mit `in_highlights`). Ein Preload von `game_shots` und `stream_broadcasts`
-  # hülfe nicht: GameHighlights und StreamTimeline fragen über eigene Scopes
+  # vorgemerkte Szene mit `in_highlights`). Ein Preload von `game_shots` und
+  # `stream_broadcasts` hülfe nicht: GameHighlights und StreamTimeline fragen über eigene Scopes
   # ab und gingen am Preload vorbei. Alle anderen Spiele sind sofort false.
   def highlight_candidates(games)
     ids = games.select(&:tablet_capture?).map(&:id)

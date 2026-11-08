@@ -50,11 +50,12 @@
 #
 # ALUMINIUM (fe#651): `result: 'post'` ist ein Treffer an Latte oder Pfosten.
 # Kein Schuss aufs Tor (nicht in ON_GOAL), belastet also keine Fangquote, wird
-# aber eine Highlight-Szene (GameHighlights), anders als Freischläge.
+# aber, anders als gehaltene, vorbei gegangene oder geblockte Schüsse, eine
+# Highlight-Szene (GameHighlights).
 #
-# `in_highlights` ist die Auswahl für die öffentlichen Highlights, je Tor-Schuss
-# Aluminiumtreffer und vorgemerkter Szene. Sie gehört nicht zu INPUT_FIELDS: Das Tablet gleicht
-# seinen Puffer mit vollen Datensätzen ab und soll die Auswahl, die später über
+# `in_highlights` ist die Auswahl für die öffentlichen Highlights, je Tor-Schuss,
+# Aluminiumtreffer und vorgemerkter Szene. Sie gehört nicht zu INPUT_FIELDS: Das
+# Tablet gleicht seinen Puffer mit vollen Datensätzen ab und soll die Auswahl, die später über
 # den Mail-Link oder von der SBK getroffen wird, nicht überschreiben.
 class GameShot < ApplicationRecord
   TEAMS = %w[home guest].freeze

@@ -25,8 +25,8 @@
 # alle späteren Tore um eins (Spiel 58763, 24.10.2026). Hier lässt sich das mit
 # dem Video vor Augen korrigieren: `goals` listet die Tore des Berichts, Tor-Schüsse
 # ohne Tor stehen als Szene `kind: 'unlinked'` in der Liste (nur im Editor,
-# öffentlich nie), und `assignments` hängt Schüsse um oder macht sie zum
-# Fehlschuss.
+# öffentlich nie), und `assignments` hängt Schüsse um oder nimmt ihnen das Tor
+# (gehalten, vorbei, geblockt oder Aluminium; nur Aluminium bleibt eine Szene).
 class HighlightEditor
   class Invalid < StandardError; end
 
@@ -68,7 +68,7 @@ class HighlightEditor
   # `offset_seconds`: Ganzzahl oder nil (Kalibrierung zurücknehmen), fehlt der
   # Schlüssel, bleibt der Versatz. `scenes`: [{ client_uuid, in_highlights }].
   # `assignments`: [{ client_uuid, event_id }] hängt einen Tor-Schuss an ein
-  # Tor, [{ client_uuid, event_id: nil, result }] macht ihn zum Fehlschuss.
+  # Tor, [{ client_uuid, event_id: nil, result }] nimmt ihm das Tor.
   # Alles oder nichts.
   def update!(params, user: nil)
     beste = best
@@ -178,8 +178,9 @@ class HighlightEditor
     end
   end
 
-  # [[GameShot, Boolean], …]. Nur Tor-Schüsse mit Szene und vorgemerkte
-  # Szenen dieses Spiels; Freischläge und fremde Kennungen weist das ab.
+  # [[GameShot, Boolean], …]. Nur Tor-Schüsse mit Szene, Aluminiumtreffer und
+  # vorgemerkte Szenen dieses Spiels; Freischläge und fremde Kennungen weist
+  # das ab.
   def auswahl_aus(eintraege)
     return [] if eintraege.nil?
     raise Invalid, 'scenes muss eine Liste sein.' unless eintraege.is_a?(Array)

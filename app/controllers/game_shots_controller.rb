@@ -129,9 +129,10 @@ class GameShotsController < ApplicationController
 
   # GET games/:id/highlights (öffentlich, fe#555)
   #
-  # Szenen der Tore mit verknüpftem Schuss in der Stream-Aufzeichnung. Fragt
-  # YouTube nicht, sondern liest Start und Länge, die der Wächter an
-  # `stream_broadcasts` gespeichert hat (StreamChapters).
+  # Szenen der Tore mit verknüpftem Schuss, vorgemerkte Szenen und
+  # Aluminiumtreffer in der Stream-Aufzeichnung. Fragt YouTube nicht, sondern
+  # liest Start und Länge, die der Wächter an `stream_broadcasts` gespeichert
+  # hat (StreamChapters).
   def highlights
     unless @game.tablet_capture?
       return render json: { message: 'Keine Highlights für dieses Spiel.' }, status: :not_found

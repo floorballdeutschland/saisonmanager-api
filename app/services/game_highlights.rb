@@ -1,9 +1,10 @@
 # frozen_string_literal: true
 
 # Virtuelle Highlights eines Tablet-Spiels (fe#555): je Tor mit verknüpftem
-# Schuss eine Szene in der YouTube-Aufzeichnung, ohne ein Video zu schneiden.
+# Schuss, vorgemerkter Szene und Aluminiumtreffer eine Szene in der
+# YouTube-Aufzeichnung, ohne ein Video zu schneiden.
 #
-# Nur Tore mit Tablet-Schuss: `added_at` liegt 1,5 bis über 3 min hinter dem
+# Tore nur mit Tablet-Schuss: `added_at` liegt 1,5 bis über 3 min hinter dem
 # Tor (Stichprobe vom 11.10.2026, Spiel 58679) und taugt für eine
 # 20-Sekunden-Szene nicht.
 #

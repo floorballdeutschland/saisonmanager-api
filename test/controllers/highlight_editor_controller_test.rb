@@ -248,6 +248,26 @@ class HighlightEditorControllerTest < ActionDispatch::IntegrationTest
     assert_equal %w[post Aluminium], szene.values_at('kind', 'label')
   end
 
+  test 'Aluminium-Szene steht abgewählt im Editor und lässt sich wieder auswählen (fe#651)' do
+    GameShot.create!(game: @game, client_uuid: 'p1', team: 'home', period: 2, tapped_at: @start + 45.minutes,
+                     x: 0.9, y: 0.4, result: 'post', in_highlights: false)
+    token = gesendeter_token
+
+    get "/api/v2/highlight_editor.json?token=#{token}"
+    szene = response.parsed_body['scenes'].find { |s| s['client_uuid'] == 'p1' }
+    assert_equal ['post', 'Aluminium', false], szene.values_at('kind', 'label', 'in_highlights')
+
+    put "/api/v2/highlight_editor.json?token=#{token}",
+        params: { scenes: [{ client_uuid: 'p1', in_highlights: true }] }, as: :json
+    assert_response :success
+    assert GameShot.find_by(client_uuid: 'p1').in_highlights
+
+    with_real_cache do
+      get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
+      assert_includes response.parsed_body['scenes'].map { |s| s['kind'] }, 'post'
+    end
+  end
+
   test 'Zuordnung an ein belegtes Tor löst den bisherigen Schuss' do
     zwei_tore_und_ein_fehltipper
 
