@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Tabletmodus: Aluminium**: Treffer an Latte oder Pfosten lassen sich als eigenes Schussergebnis `post` erfassen (fe#651). Sie zählen als Schuss, aber nicht aufs Tor und nicht in die Fangquote; die ausführliche Statistik weist sie je Team als `posts` aus. In den virtuellen Highlights wird jeder Aluminiumtreffer eine Szene (`kind: 'post'`), abwählbar wie Tor-Szenen; im Szenen-Editor lässt sich ein Tor-Schuss ohne Tor auch zum Aluminiumtreffer machen. Sprungmarken bleiben bei Toren und Strafen. Muss vor dem Frontend live sein.
+
 ### Behoben
 
 - **CI läuft wieder**: Seit dem 4.11. brach jeder CI-Lauf vor den Tests ab, weil `ubuntu-latest` auf Ubuntu 26.04 umgestellt wurde und es dort kein Ruby 3.2.4 gibt. Der Runner ist jetzt fest auf `ubuntu-24.04`.

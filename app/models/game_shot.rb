@@ -48,16 +48,21 @@
 # das gibt es nur bei `result: 'saved'` ohne Strafschuss. Solche Schüsse
 # zählen in Summen, Paraden und Fangquote, aber in keiner Schussgrafik.
 #
-# `in_highlights` ist die Auswahl für die öffentlichen Highlights, je Tor-Schuss
-# und vorgemerkter Szene. Sie gehört nicht zu INPUT_FIELDS: Das Tablet gleicht
-# seinen Puffer mit vollen Datensätzen ab und soll die Auswahl, die später über
+# ALUMINIUM (fe#651): `result: 'post'` ist ein Treffer an Latte oder Pfosten.
+# Kein Schuss aufs Tor (nicht in ON_GOAL), belastet also keine Fangquote, wird
+# aber, anders als gehaltene, vorbei gegangene oder geblockte Schüsse, eine
+# Highlight-Szene (GameHighlights).
+#
+# `in_highlights` ist die Auswahl für die öffentlichen Highlights, je Tor-Schuss,
+# Aluminiumtreffer und vorgemerkter Szene. Sie gehört nicht zu INPUT_FIELDS: Das
+# Tablet gleicht seinen Puffer mit vollen Datensätzen ab und soll die Auswahl, die später über
 # den Mail-Link oder von der SBK getroffen wird, nicht überschreiben.
 class GameShot < ApplicationRecord
   TEAMS = %w[home guest].freeze
   KINDS = %w[shot free_hit mark].freeze
   # Was in die Statistik eingeht. Vorgemerkte Szenen gehören nicht dazu.
   STAT_KINDS = %w[shot free_hit].freeze
-  RESULTS = %w[goal saved missed blocked].freeze
+  RESULTS = %w[goal saved missed blocked post].freeze
   # Auf das Tor: Tor oder vom Torhüter gehalten.
   ON_GOAL = %w[goal saved].freeze
 

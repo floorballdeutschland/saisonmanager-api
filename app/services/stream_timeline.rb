@@ -55,7 +55,8 @@ class StreamTimeline
   CALIBRATED_SCENE_LEAD = 12
   CALIBRATED_SCENE_TAIL = 8
 
-  # Eine vorgemerkte Szene (`game_shots.kind = 'mark'`).
+  # Ein Eintrag, der nur am Zeitpunkt des Antippens hängt: vorgemerkte Szene
+  # (`kind: 'mark'`) oder Aluminiumtreffer (`result: 'post'`).
   Mark = Struct.new(:shot, :anchor_at, keyword_init: true)
 
   # Ein Tor oder eine Strafe mit Anker. Der Name stammt aus der Zeit, als nur
@@ -98,6 +99,13 @@ class StreamTimeline
   # Sprungmarken.
   def marks
     @marks ||= game.game_shots.marks.order(:tapped_at, :id).map { |shot| Mark.new(shot: shot, anchor_at: shot.tapped_at) }
+  end
+
+  # Aluminiumtreffer (`result: 'post'`), als Mark wie die vorgemerkten Szenen:
+  # Anker ist der Zeitpunkt des Antippens. Nur Highlights, keine Sprungmarken.
+  def posts
+    @posts ||= game.game_shots.shots.where(result: 'post').order(:tapped_at, :id)
+                   .map { |shot| Mark.new(shot: shot, anchor_at: shot.tapped_at) }
   end
 
   def offset
