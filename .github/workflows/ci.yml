@@ -8,7 +8,9 @@ on:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    # Fest auf 24.04: ubuntu-latest ist seit Anfang November 26.04, dafuer
+    # hat setup-ruby kein Ruby 3.2.4 ("Unavailable version 3.2.4").
+    runs-on: ubuntu-24.04
 
     services:
       postgres:
