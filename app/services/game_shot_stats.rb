@@ -129,6 +129,7 @@ class GameShotStats
       goals: shots.count { |shot| shot.result == 'goal' },
       blocked: shots.count { |shot| shot.result == 'blocked' },
       missed: shots.count { |shot| shot.result == 'missed' },
+      posts: shots.count { |shot| shot.result == 'post' },
       free_hits: free_hits.size,
       shots_from_free_hit: aus_freischlag.size,
       goals_from_free_hit: aus_freischlag.count { |shot| shot.result == 'goal' },
