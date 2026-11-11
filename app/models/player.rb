@@ -276,11 +276,17 @@ class Player < ApplicationRecord
     if team_clubs.present?
       p.merge!(license_clubs: team_clubs.to_json, license_club: '', league_id: team.league_id)
 
-      if team_clubs.map(&:id).include? p[:license_hash_id]
+      # Abrechnender Verein. Bei Spielgemeinschaften (festgelegt 11.11.2026):
+      #   1. der Heimatverein, wenn er Verein der SG ist,
+      #   2. sonst der SG-Verein, bei dem der Spieler eine Freigabe hat,
+      #   3. ohne Bezug zur SG der erste Verein des Teams (Datenfehler).
+      # Bis 2.6.1 stand hier `p[:license_hash_id]`, ein Schluessel, den es nie
+      # gab. Regel 1 griff deshalb nie, und mit einem zusaetzlichen Eintrag beim
+      # SG-Partner landete die Lizenz dort.
+      if team_clubs.map(&:id).include? p[:home_club_id]
         p[:license_club] = p[:home_club]
         p[:license_club_state] = p[:home_club_state]
       elsif (team_clubs.map(&:id) & club_ids).size > 0
-        # check which club should be choosen
         club = Club.find_by_id (team_clubs.map(&:id) & club_ids).first
         p[:license_club] = club ? club.name : 'FEHLER (LC)'
         p[:license_club_state] = club ? club.state : 'FEHLER (LCS)'
