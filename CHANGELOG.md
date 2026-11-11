@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-11-11
+
 ### Neu
 
 - **Tabletmodus: Aluminium**: Treffer an Latte oder Pfosten lassen sich als eigenes Schussergebnis `post` erfassen (fe#651). Sie zählen als Schuss, aber nicht aufs Tor und nicht in die Fangquote; die ausführliche Statistik weist sie je Team als `posts` aus. In den virtuellen Highlights wird jeder Aluminiumtreffer eine Szene (`kind: 'post'`), abwählbar wie Tor-Szenen; im Szenen-Editor lässt sich ein Tor-Schuss ohne Tor auch zum Aluminiumtreffer machen. Sprungmarken bleiben bei Toren und Strafen. Muss vor dem Frontend live sein.
