@@ -13,8 +13,7 @@ class GameRefereeReportsController < ApplicationController
   # `required` und `recipient` steuern den Upload-Bereich der Spielseite
   # (api#789): ob ein Bericht verlangt ist und an wen er nach dem Upload geht
   # ('vsk', 'sbk', 'vsk_and_sbk'). Das Frontend leitet das nicht mehr selbst
-  # aus den Strafen ab. Beides nur für denselben Kreis wie die Datei, weil
-  # `required` sonst verraten würde, dass ein besonderes Ereignis vermerkt ist.
+  # aus den Strafen ab. Beides nur für denselben Kreis wie die Datei.
   def show
     unless admin_or_sbk_for_game? || authorized_referee?
       return render json: { uploaded: false, required: false, recipient: nil }

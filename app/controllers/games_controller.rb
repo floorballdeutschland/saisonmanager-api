@@ -1077,6 +1077,9 @@ class GamesController < ApplicationController
           signatures_error = _signatures_incomplete_error(game) unless sbk
           return render json: { message: signatures_error }, status: :unprocessable_entity if signatures_error
 
+          special_event_error = _special_event_description_error(game) unless sbk
+          return render json: { message: special_event_error }, status: :unprocessable_entity if special_event_error
+
           checklist_error = _checklist_incomplete_error(game)
           return render json: { message: checklist_error }, status: :unprocessable_entity if checklist_error
         end
@@ -1209,6 +1212,16 @@ class GamesController < ApplicationController
     'Auf dem Spielbericht fehlen noch Unterschriften: ' \
       "#{missing.join(', ')}. Erst wenn alle Unterschriften abgehakt sind, " \
       'kann der Spielbericht abgeschlossen werden.'
+  end
+
+  # Wie bei den Unterschriften gilt die Sperre nicht für Admin und SBK: Sie
+  # schließen auch alte Berichte nachträglich ab und sollen dafür nicht ein
+  # fremdes Ereignis nacherzählen müssen.
+  def _special_event_description_error(game)
+    return nil unless game.special_event_description_missing?
+
+    "Es ist ein besonderes Ereignis angehakt. Bitte beschreibe es in mindestens " \
+      "#{Game::SPECIAL_EVENT_DESCRIPTION_MIN_LENGTH} Zeichen, bevor der Spielbericht abgeschlossen werden kann."
   end
 
   def _checklist_incomplete_error(game)
@@ -1393,8 +1406,8 @@ class GamesController < ApplicationController
     # (Papierbericht) – dann ist auch keine 24h-Frist zu melden.
     return unless game.report_form_workflow_enabled?
 
-    # Volle Matchstrafe, technische Matchstrafe oder besonderes Ereignis,
-    # erkannt über das Mapping der Strafe (api#789).
+    # Volle oder technische Matchstrafe, erkannt über das Mapping der Strafe
+    # (api#789). Ein besonderes Ereignis verlangt kein Berichtsformular mehr.
     return unless game.report_form_required?
 
     assignment = game.referee_assignment
