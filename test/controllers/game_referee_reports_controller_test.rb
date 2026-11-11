@@ -111,6 +111,14 @@ class GameRefereeReportsControllerTest < ActionDispatch::IntegrationTest
     assert_forwarded_to [], proposals: 0
   end
 
+  # Vorher machte das besondere Ereignis aus der Matchstrafe einen Mischfall
+  # mit eigener SBK-Mail.
+  test 'automatisch: Matchstrafe mit besonderem Ereignis geht nur an die VSK' do
+    @game.update!(events: [MATCH], special_event: true)
+    mails = assert_forwarded_to %w[vsk@example.de], proposals: 0
+    assert_not_includes body_of(mails.first), 'besonderes Ereignis'
+  end
+
   test 'automatisch: Mischfall geht mit je eigener Mail an VSK und SBK' do
     @game.update!(events: [MATCH, TECH], special_event: true)
     mails = assert_forwarded_to %w[vsk@example.de sbk@example.de], proposals: 0

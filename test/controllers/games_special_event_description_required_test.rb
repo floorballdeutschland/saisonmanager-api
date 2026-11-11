@@ -100,6 +100,50 @@ class GamesSpecialEventDescriptionRequiredTest < ActionDispatch::IntegrationTest
     assert_equal 'aftergame', @game.reload.game_status
   end
 
+  test 'ein Emoji zählt als ein Zeichen, ein geschütztes Leerzeichen am Rand gar nicht' do
+    # 49 Zeichen plus ein Emoji, umrahmt von geschützten Leerzeichen: wie im
+    # Frontend 50 Zeichen.
+    @game.update!(special_event_string: "\u00a0#{'x' * 49}🙂\u00a0")
+    login(@vm)
+
+    close_match_record
+
+    assert_response :success
+  end
+
+  test 'ein geschütztes Leerzeichen zählt nicht als Beschreibung' do
+    @game.update!(special_event_string: "\u00a0#{'x' * 49}\u00a0")
+    login(@vm)
+
+    close_match_record
+
+    assert_response :unprocessable_entity
+    assert_includes response.parsed_body['message'], 'mit 49 Zeichen zu kurz'
+  end
+
+  test 'die SBK eines anderen Spielbetriebs übergeht die Pflicht nicht' do
+    other_go = create(:game_operation, state_association_id: create(:state_association).id)
+    sbk = create(:user, :sbk_scoped, game_operation_id: other_go.id)
+    # Zugriff auf das Spiel hat sie über eine zweite Rolle als VM des Ausrichters.
+    sbk.update!(permissions: sbk.permissions + @vm.permissions)
+    login(sbk)
+
+    close_match_record
+
+    assert_response :unprocessable_entity
+    assert_equal 'aftergame', @game.reload.game_status
+  end
+
+  test 'auch ohne Beschreibungspflicht bleibt für die SBK die Checkliste Pflicht' do
+    @go.state_association.checklist_items.create!(question: 'Halle rechtzeitig offen?', position: 1)
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    close_match_record
+
+    assert_response :unprocessable_entity
+    assert_includes response.parsed_body['message'], 'Spieltagsbericht'
+  end
+
   test 'die SBK des Spielbetriebs schließt auch ohne Beschreibung ab' do
     login(create(:user, :sbk_scoped, game_operation_id: @go.id))
 

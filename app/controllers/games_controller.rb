@@ -1225,7 +1225,7 @@ class GamesController < ApplicationController
     return nil unless game.special_event_description_missing?
 
     min = Game::SPECIAL_EVENT_DESCRIPTION_MIN_LENGTH
-    length = game.special_event_string.to_s.strip.length
+    length = game.special_event_description_length
     where = 'Beschreibe es unter „Sonstige Ereignisse“ im Feld „Besonderes Ereignis“.'
 
     if length.zero?

@@ -505,7 +505,14 @@ class Game < ApplicationRecord
   def special_event_description_missing?
     return false unless special_event?
 
-    special_event_string.to_s.strip.length < SPECIAL_EVENT_DESCRIPTION_MIN_LENGTH
+    special_event_description_length < SPECIAL_EVENT_DESCRIPTION_MIN_LENGTH
+  end
+
+  # Zählt wie das Frontend (special-event-description.ts): Unicode-Leerraum
+  # am Rand weg, dann Zeichen. `String#strip` ließe ein geschütztes Leerzeichen
+  # stehen, das JavaScripts `trim` entfernt.
+  def special_event_description_length
+    special_event_string.to_s.gsub(/\A[[:space:]]+|[[:space:]]+\z/, '').length
   end
 
   # Wohin das hochgeladene Berichtsformular geht:
