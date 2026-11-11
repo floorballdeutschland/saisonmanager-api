@@ -39,9 +39,21 @@ class GamesSpecialEventDescriptionRequiredTest < ActionDispatch::IntegrationTest
     close_match_record
 
     assert_response :unprocessable_entity
-    assert_includes response.parsed_body['message'], 'besonderes Ereignis'
-    assert_includes response.parsed_body['message'], '50 Zeichen'
+    message = response.parsed_body['message']
+    assert_includes message, 'noch nicht beschrieben'
+    assert_includes message, 'mindestens 50 Zeichen'
+    assert_includes message, '„Sonstige Ereignisse“'
     assert_equal 'aftergame', @game.reload.game_status
+  end
+
+  test 'nur Leerraum gilt als nicht beschrieben' do
+    @game.update!(special_event_string: "  \n ")
+    login(@vm)
+
+    close_match_record
+
+    assert_response :unprocessable_entity
+    assert_includes response.parsed_body['message'], 'noch nicht beschrieben'
   end
 
   test '49 Zeichen reichen nicht, Leerraum am Rand zählt nicht mit' do
@@ -51,6 +63,10 @@ class GamesSpecialEventDescriptionRequiredTest < ActionDispatch::IntegrationTest
     close_match_record
 
     assert_response :unprocessable_entity
+    message = response.parsed_body['message']
+    assert_includes message, 'mit 49 Zeichen zu kurz'
+    assert_includes message, 'mindestens 50'
+    assert_includes message, 'es fehlen noch 1'
     assert_equal 'aftergame', @game.reload.game_status
   end
 
