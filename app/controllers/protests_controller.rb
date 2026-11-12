@@ -10,11 +10,14 @@ class ProtestsController < ApplicationController
   skip_before_action :authenticate_user
 
   INVALID_MESSAGE = 'Dieser Link ist ungültig.'
+  WITHDRAWN_MESSAGE = 'Dieser Protest wurde im Spielbericht zurückgenommen. ' \
+                      'Bei Fragen wende dich an die zuständige Spielbetriebskommission.'
 
   # GET /api/v2/protests/:token
   def show
     protest = GameProtest.find_by_token(params[:token])
     return render json: { message: INVALID_MESSAGE }, status: :gone if protest.nil?
+    return render json: { message: WITHDRAWN_MESSAGE }, status: :gone if withdrawn?(protest)
 
     render json: protest_json(protest)
   end
@@ -23,27 +26,52 @@ class ProtestsController < ApplicationController
   def create
     protest = GameProtest.find_by_token(params[:token])
     return render json: { message: INVALID_MESSAGE }, status: :gone if protest.nil?
+    return render json: { message: WITHDRAWN_MESSAGE }, status: :gone if withdrawn?(protest)
 
-    if protest.submitted?
-      return render json: { message: 'Über diesen Link wurde bereits ein Protestformular hochgeladen.' },
-                    status: :unprocessable_entity
-    end
     if params[:file].blank?
       return render json: { message: 'Bitte wähle das ausgefüllte Protestformular als PDF aus.' },
                     status: :unprocessable_entity
     end
 
-    protest.file.attach(params[:file])
-    protest.submitted_at = Time.current
-    if protest.save
-      notify_sbk(protest)
-      render json: protest_json(protest), status: :created
-    else
-      render json: { message: protest.errors.full_messages.join(' ') }, status: :unprocessable_entity
-    end
+    saved, error = store_file(protest)
+    return render json: { message: error }, status: :unprocessable_entity unless saved
+
+    notify_sbk(protest)
+    render json: protest_json(protest), status: :created
   end
 
   private
+
+  # Ein noch offener Link einer abgewählten Partei gilt nicht mehr; ein schon
+  # hochgeladenes Formular bleibt sichtbar.
+  def withdrawn?(protest)
+    !protest.submitted? && !protest.link_active?
+  end
+
+  # Prüfen und Speichern unter einer Zeilensperre: Zwei gleichzeitige Uploads
+  # über denselben Link kämen sonst beide an der Prüfung vorbei, der zweite
+  # ersetzte die Datei des ersten, und die SBK bekäme zwei Mails.
+  # Ohne `return` im Block: Ein vorzeitiger Ausstieg aus einer Transaktion
+  # schreibt in Rails 7.2 fest, statt zurückzurollen.
+  def store_file(protest)
+    result = nil
+    protest.with_lock do
+      if protest.submitted?
+        result = [false, 'Über diesen Link wurde bereits ein Protestformular hochgeladen.']
+      else
+        protest.file.attach(params[:file])
+        protest.submitted_at = Time.current
+        if protest.save
+          result = [true, nil]
+        else
+          result = [false, protest.errors.full_messages.join(' ').presence ||
+            'Das Protestformular konnte nicht gespeichert werden.']
+          raise ActiveRecord::Rollback
+        end
+      end
+    end
+    result
+  end
 
   def protest_json(protest)
     game = protest.game

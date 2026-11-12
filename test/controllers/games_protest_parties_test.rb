@@ -189,4 +189,63 @@ class GamesProtestPartiesTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal 0, @game.reload.game_protests.count
   end
+
+  test 'ein getrennter Ausrichter bekommt seinen Link über die Vereinspost' do
+    host = create(:club, name: 'Hallenverein', contact_email: 'halle@example.de')
+    @game_day.update!(club: host)
+    @game.reload.update!(protest: true, protest_parties: %w[host home])
+    login(create(:user, :admin))
+
+    assert_enqueued_emails 2 do
+      close_match_record
+    end
+
+    protests = @game.reload.game_protests.index_by(&:party)
+    assert_equal ['halle@example.de'], protests['host'].recipients
+    # Das Heimteam läuft weiter über die Kaskade seiner Mannschaft, nicht über
+    # die Vereinspost des Ausrichters.
+    assert_not_includes protests['home'].recipients, 'halle@example.de'
+    assert_includes protests['home'].recipients, 'heim@example.de'
+  end
+
+  test 'auch bei direktem Finalisieren gehen die Links raus' do
+    @game.update!(protest: true, protest_parties: %w[guest])
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    assert_enqueued_emails 1 do
+      post "/api/v2/user/games/#{@game.id}/game_status", params: { game_status: 'finalized' }, as: :json
+    end
+    assert_response :success
+    assert_equal %w[guest], @game.reload.game_protests.pluck(:party)
+  end
+
+  test 'scheitert der Link einer Partei, bekommen die anderen ihren trotzdem und der Abschluss gelingt' do
+    @game.update!(protest: true, protest_parties: %w[home guest])
+    login(@vm)
+    original = GameProtest.method(:create_with_token!)
+    failing = lambda do |**kwargs|
+      raise ActiveRecord::StatementInvalid, 'kaputt' if kwargs[:party] == 'home'
+
+      original.call(**kwargs)
+    end
+
+    GameProtest.stub(:create_with_token!, failing) do
+      close_match_record
+    end
+
+    assert_response :success
+    assert_equal 'match_record_closed', @game.reload.game_status
+    assert_equal %w[guest], @game.game_protests.pluck(:party)
+  end
+
+  test 'die Mail an die Partei antwortet ohne SBK-Adresse an das Ansetzungs-Postfach' do
+    @sa.update!(sbk_email: nil)
+    @game.update!(protest: true, protest_parties: %w[guest])
+    login(@vm)
+
+    perform_enqueued_jobs { close_match_record }
+
+    mail = ActionMailer::Base.deliveries.find { |m| m.subject.include?('Protestformular hochladen') }
+    assert_equal [RefereeMailer::REPLY_TO], mail.reply_to
+  end
 end

@@ -29,6 +29,12 @@ module TeamContactRecipients
   # gelöschten Postfach weiter an der Mannschaft. Ohne die Prüfung besetzte so
   # ein toter Eintrag die erste Stufe, die Mail bounct, und beide Auffangnetze
   # bleiben ungenutzt, während die Bestätigungsfrist weiterläuft.
+  #
+  # Für Protest-Links (GameProtestInviter) gilt dieselbe Kaskade samt Abwahl:
+  # Ein Teammanager ohne Info-Mails lässt auch den Link an die Vereinsmanager
+  # weiterfallen. Auch der Protest ist eine Sache des Vereins, und wer den
+  # Link nicht bekommt, wäre der SBK nur als „keine Adresse" aufgefallen.
+  #
   # Liefert die gezogene Stufe und ihre Adressen. Die Stufe kommt aus der
   # Ermittlung selbst und wird nicht nachträglich rekonstruiert -- ein zweiter
   # Durchlauf kostete eine weitere Abfrage über die Vereinsmanager.

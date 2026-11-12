@@ -15,7 +15,8 @@ module Admin
                            guest_team: create(:team, league: @league, club: create(:club)),
                            forfait: 0, overtime: false, legacy: false, events: [],
                            players: { 'home' => [], 'guest' => [] },
-                           protest: true, protest_parties: %w[guest referees other])
+                           protest: true, protest_parties: %w[guest referees other],
+                           game_status: 'match_record_closed')
       @protest, = GameProtest.create_with_token!(game: @game, party: 'guest', recipients: ['gast@example.de'])
       @protest.file.attach(io: file_fixture('dokument.pdf').open, filename: 'protest.pdf',
                            content_type: 'application/pdf')
@@ -86,6 +87,7 @@ module Admin
     end
 
     test 'ohne Eingabe geht der Link an die inzwischen hinterlegte Adresse' do
+      @game.update!(protest_parties: %w[guest referees home other])
       @game.game_day.club.update!(contact_email: 'neu@example.de')
       host_team = @game.home_team
       assert_equal @game.game_day.club_id, host_team.club_id
@@ -96,6 +98,37 @@ module Admin
         post "/api/v2/admin/games/#{@game.id}/protests/home/resend", as: :json
       end
       assert_includes home.reload.recipients, 'neu@example.de'
+    end
+
+    test 'fehlt der Link einer gewählten Partei, legt erneut senden ihn an' do
+      @game.update!(protest_parties: %w[guest referees home other])
+      login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+      assert_enqueued_emails 1 do
+        post "/api/v2/admin/games/#{@game.id}/protests/home/resend", params: { email: 'heim@example.de' }, as: :json
+      end
+
+      assert_response :success
+      assert response.parsed_body['invited_at'].present?
+      assert_equal ['heim@example.de'], @game.game_protests.find_by(party: 'home').recipients
+      assert_not_includes response.body, 'token'
+      assert_not_includes response.body, 'heim@example.de'
+    end
+
+    test 'vor dem Abschluss, für Andere und für abgewählte Parteien gibt es keinen Link' do
+      login(create(:user, :admin))
+
+      post "/api/v2/admin/games/#{@game.id}/protests/other/resend", params: { email: 'x@example.de' }, as: :json
+      assert_includes response.parsed_body['message'], 'manuell'
+
+      @game.update!(game_status: 'aftergame', protest_parties: %w[guest referees home])
+      post "/api/v2/admin/games/#{@game.id}/protests/home/resend", params: { email: 'x@example.de' }, as: :json
+      assert_includes response.parsed_body['message'], 'beim Abschluss'
+
+      @game.update!(game_status: 'match_record_closed', protest_parties: %w[guest])
+      post "/api/v2/admin/games/#{@game.id}/protests/referees/resend", params: { email: 'x@example.de' }, as: :json
+      assert_response :unprocessable_entity
+      assert_includes response.parsed_body['message'], 'nicht als Protestpartei'
     end
 
     test 'nach dem Upload gibt es keinen neuen Link' do

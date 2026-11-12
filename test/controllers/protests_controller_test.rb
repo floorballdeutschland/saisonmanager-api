@@ -93,4 +93,45 @@ class ProtestsControllerTest < ActionDispatch::IntegrationTest
     mail = ActionMailer::Base.deliveries.find { |m| m.subject.include?('Protestformular eingegangen') }
     assert_equal [RefereeMailer::REPLY_TO], mail.to
   end
+
+  test 'die Mail an die SBK nennt Partei, Zeitpunkt und den Weg zur Übersicht' do
+    perform_enqueued_jobs do
+      post "/api/v2/protests/#{@token}", params: { file: pdf }
+    end
+
+    mail = ActionMailer::Base.deliveries.find { |m| m.subject.include?('Protestformular eingegangen') }
+    body = (mail.html_part || mail).decoded.gsub(/\s+/, ' ')
+    assert_includes body, 'Gastteam (Gast)'
+    assert_includes body, '08.11.2026'
+    assert_includes body, '/verwaltung/spielberichte'
+    assert_match(/\d{2}\.\d{2}\.\d{4} um \d{2}:\d{2} Uhr/, body)
+  end
+
+  test 'nach dem Zurücknehmen der Partei gilt ein offener Link nicht mehr' do
+    @game.update!(protest_parties: %w[referees])
+
+    get "/api/v2/protests/#{@token}"
+    assert_response :gone
+    assert_includes response.parsed_body['message'], 'zurückgenommen'
+
+    post "/api/v2/protests/#{@token}", params: { file: pdf }
+    assert_response :gone
+    assert_not @protest.reload.submitted?
+  end
+
+  test 'ein hochgeladenes Formular bleibt nach dem Zurücknehmen einsehbar' do
+    post "/api/v2/protests/#{@token}", params: { file: pdf }
+    @game.update!(protest: false)
+
+    get "/api/v2/protests/#{@token}"
+    assert_response :success
+    assert_equal 'submitted', response.parsed_body['status']
+  end
+
+  test 'die Antwort enthält weder Token noch Adressen' do
+    get "/api/v2/protests/#{@token}"
+
+    assert_not_includes response.body, @token
+    assert_not_includes response.body, 'gast@example.de'
+  end
 end

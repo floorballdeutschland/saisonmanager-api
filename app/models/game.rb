@@ -186,7 +186,7 @@ class Game < ApplicationRecord
   end
 
   # Ausrichter als eigene Partei nur, wenn er nicht das Heimteam stellt. Sonst
-  # wäre dieselbe Mannschaft zweimal wählbar und bekäme zwei Links.
+  # wäre derselbe Verein zweimal wählbar und bekäme zwei Links.
   def host_separate_from_home?
     host_club_id = game_day&.club_id
     host_club_id.present? && host_club_id != home_team&.club_id

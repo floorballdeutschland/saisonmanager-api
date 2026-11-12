@@ -10,7 +10,8 @@
 # nur der SHA256-Digest gespeichert, den Rohtoken gibt es ausschließlich beim
 # Erzeugen. Eine technische Frist gibt es bewusst nicht (Entscheidung
 # 12.11.2026): Fristen prüft die SBK anhand von submitted_at. Der Link gilt,
-# bis ein Formular hochgeladen ist.
+# bis ein Formular hochgeladen ist, die SBK einen neuen verschickt
+# (#regenerate_token!) oder die Partei abgewählt wird (#link_active?).
 class GameProtest < ApplicationRecord
   include PdfOnlyAttachment
 
@@ -48,6 +49,14 @@ class GameProtest < ApplicationRecord
 
   def submitted?
     submitted_at.present?
+  end
+
+  # Gilt der Link noch? Nur solange der Protest steht und die Partei gewählt
+  # ist: Ein versehentlich gewählter oder zurückgenommener Protest soll keine
+  # Uploads mehr annehmen. Der Datensatz samt bereits hochgeladenem Formular
+  # bleibt erhalten, die SBK sieht ihn weiter.
+  def link_active?
+    game.protest? && Array(game.protest_parties).include?(party)
   end
 
   # Eine Zeile der Arbeitsansicht „Spielberichte" je Partei, auch für eine

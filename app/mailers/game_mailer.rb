@@ -125,7 +125,9 @@ class GameMailer < ApplicationMailer
 
     templated_mail(
       to: protest.recipients,
-      default_reply_to: @game.state_association&.effective_sbk_email.presence,
+      # Wie bei der SBK-Mail (ProtestsController#notify_sbk): ohne SBK-Adresse
+      # das Ansetzungs-Postfach, damit „antwortet einfach" irgendwo ankommt.
+      default_reply_to: @game.state_association&.effective_sbk_email.presence || RefereeMailer::REPLY_TO,
       placeholders: {
         game_number: @game.game_number,
         home_team: @game.home_team_name,

@@ -776,7 +776,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       mailer_class: 'GameMailer',
       action_name: 'protest_upload_invitation',
       description: 'Link an eine Protestpartei, über den sie das ausgefüllte Protestformular hochlädt ' \
-                   '(beim Abschluss des Spielberichts, für jede gewählte Partei außer „Andere").',
+                   '(beim Abschluss des Spielberichts für jede gewählte Partei außer „Andere", ' \
+                   'danach bei einer ergänzten Partei oder wenn die SBK den Link erneut sendet).',
       default_subject: 'Protest zu Spiel {{game_number}}: Protestformular hochladen',
       default_from: nil,
       default_reply_to: nil,
@@ -787,7 +788,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'party', description: 'Angeschriebene Protestpartei, z. B. „Gastteam (TV Musterstadt)“' },
         # Ohne den Platzhalter könnte eine gepflegte Vorlage den Link nicht
         # enthalten: ein nicht leerer Body ersetzt das ERB-View vollständig.
-        { key: 'upload_url', description: 'Persönlicher Upload-Link der Partei (gilt, bis ein Formular hochgeladen ist)' }
+        { key: 'upload_url', description: 'Persönlicher Upload-Link der Partei (gilt, bis ein Formular hochgeladen oder ein neuer Link verschickt ist)' }
       ]
     },
     'GameMailer#protest_submitted_to_sbk' => {

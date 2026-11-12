@@ -944,8 +944,9 @@ class GamesController < ApplicationController
       game.record_updated_by = author_user_id
 
       if game.update(game_flag_params)
-        # Ist der Bericht schon abgeschlossen (die SBK ergänzt eine Partei),
-        # geht der Link sofort raus; sonst erst beim Abschluss.
+        # Ist der Bericht schon abgeschlossen, geht der Link einer ergänzten
+        # Partei sofort raus; sonst erst beim Abschluss. Läuft bei jedem
+        # Speichern eines Flags, ist aber je Partei idempotent.
         _send_protest_invitations(game) if game.match_record_closed?
         render json: game.events
       else
@@ -1112,8 +1113,11 @@ class GamesController < ApplicationController
           PlayerSuspension.count_closed_game!(game.reload, user_id: current_user&.id)
         end
 
+        # Links an die Protestparteien auch bei direktem `finalized` (die SBK
+        # überspringt den Abschluss), sonst ginge dann nie einer raus.
+        _send_protest_invitations(game) if %w[match_record_closed finalized].include?(params[:game_status])
+
         if params[:game_status] == 'match_record_closed'
-          _send_protest_invitations(game)
           _maybe_send_incident_report_reminder(game)
           _maybe_send_checklist_confirmation(game)
         end
