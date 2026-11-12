@@ -186,7 +186,7 @@ class Player < ApplicationRecord
     updated_at_user.user_name if updated_at_user.present?
   end
 
-  def main_license_hash(season_id, deadline = Date.today)
+  def main_license_hash(season_id, deadline = Date.today, extra_licenses: [])
     # player clubs
     club_names = valid_clubs(deadline).map do |club_item|
       club = Club.find_by_id(club_item['club_id'])
@@ -198,7 +198,7 @@ class Player < ApplicationRecord
       club ? club.id : nil
     end.compact
 
-    season_licenses = billable_licenses(season_id)
+    season_licenses = billable_licenses(season_id, extra_licenses:)
     if season_licenses
       sorted_licenses = season_licenses.map! do |x|
         x['sorting'] = League.class_rank(x['league_class_id'])
@@ -211,7 +211,7 @@ class Player < ApplicationRecord
     p.merge(other_license_count: (sorted_licenses || []).count - 1) if p
   end
 
-  def secondary_license_hash(season_id, deadline = Date.today)
+  def secondary_license_hash(season_id, deadline = Date.today, extra_licenses: [])
     # player clubs
     club_names = valid_clubs(deadline).map do |club_item|
       club = Club.find_by_id(club_item['club_id'])
@@ -223,7 +223,7 @@ class Player < ApplicationRecord
       club ? club.id : nil
     end.compact
 
-    season_licenses = billable_licenses(season_id)
+    season_licenses = billable_licenses(season_id, extra_licenses:)
     if season_licenses
       sorted_licenses = season_licenses.map! do |x|
         x['sorting'] = League.class_rank(x['league_class_id'])
@@ -263,6 +263,7 @@ class Player < ApplicationRecord
     if license
       p.merge!(team_id: license['team_id'],
                license_id: license['id'],
+               merged_from_id: license[LicenseFeeCalculation::MERGED_FROM_KEY],
                league_class_id: license['league_class_id'],
                history: license['history'],
                league_class: Setting.league_class(license['league_class_id']),
@@ -275,11 +276,17 @@ class Player < ApplicationRecord
     if team_clubs.present?
       p.merge!(license_clubs: team_clubs.to_json, license_club: '', league_id: team.league_id)
 
-      if team_clubs.map(&:id).include? p[:license_hash_id]
+      # Abrechnender Verein. Bei Spielgemeinschaften (festgelegt 11.11.2026):
+      #   1. der Heimatverein, wenn er Verein der SG ist,
+      #   2. sonst der SG-Verein, bei dem der Spieler eine Freigabe hat,
+      #   3. ohne Bezug zur SG der erste Verein des Teams (Datenfehler).
+      # Bis 2.6.1 stand hier `p[:license_hash_id]`, ein Schluessel, den es nie
+      # gab. Regel 1 griff deshalb nie, und mit einem zusaetzlichen Eintrag beim
+      # SG-Partner landete die Lizenz dort.
+      if team_clubs.map(&:id).include? p[:home_club_id]
         p[:license_club] = p[:home_club]
         p[:license_club_state] = p[:home_club_state]
       elsif (team_clubs.map(&:id) & club_ids).size > 0
-        # check which club should be choosen
         club = Club.find_by_id (team_clubs.map(&:id) & club_ids).first
         p[:license_club] = club ? club.name : 'FEHLER (LC)'
         p[:license_club_state] = club ? club.state : 'FEHLER (LCS)'
@@ -1061,8 +1068,13 @@ class Player < ApplicationRecord
   #
   # Kostenfrei abgelehnte Antraege (License.free_rejection?) fallen vorher
   # heraus: Sie stehen nur noch zur Nachvollziehbarkeit in der History.
-  def billable_licenses(season_id)
+  #
+  # `extra_licenses` sind Lizenzen zusammengefuehrter Dubletten, die beim
+  # Zusammenfuehren nicht auf dieses Profil gekommen sind (siehe
+  # LicenseFeeCalculation.merged_duplicate_licenses). Sie zaehlen wie eigene.
+  def billable_licenses(season_id, extra_licenses: [])
     all = current_licenses(season_id)&.reject { |l| License.free_rejection?(l) }
+    all = (all || []) + extra_licenses if extra_licenses.present?
     return all if all.blank?
 
     all.group_by { |l| l['team_id'].to_i }.values.flat_map do |group|
