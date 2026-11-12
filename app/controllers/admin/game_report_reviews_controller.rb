@@ -48,7 +48,8 @@ module Admin
     private
 
     def load_game_and_authorize!
-      @game = Game.includes(:game_scan, :game_referee_report, :proceeding_proposal, game_day: :league)
+      @game = Game.includes(:game_scan, :game_referee_report, :proceeding_proposal, :game_protests,
+                            game_day: :league)
                   .find_by(id: params[:game_id])
       return head :not_found if @game.nil?
 
