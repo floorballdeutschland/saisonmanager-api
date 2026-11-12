@@ -8,9 +8,9 @@ on:
 
 jobs:
   ci:
-    # Fest auf 24.04: ubuntu-latest ist seit Anfang November 26.04, dafuer
-    # hat setup-ruby kein Ruby 3.2.4 ("Unavailable version 3.2.4").
-    runs-on: ubuntu-24.04
+    # Wieder ubuntu-latest: Die Festlegung auf 24.04 war nur noetig, weil
+    # setup-ruby fuer ubuntu-26.04 kein Ruby 3.2.4 mehr liefert (#884).
+    runs-on: ubuntu-latest
 
     services:
       postgres:
@@ -45,7 +45,7 @@ jobs:
 
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.2.4'
+          ruby-version: '3.4.12'
           bundler-cache: true
 
       - name: Create and migrate database
