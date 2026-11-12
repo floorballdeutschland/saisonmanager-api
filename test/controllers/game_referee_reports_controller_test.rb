@@ -104,17 +104,29 @@ class GameRefereeReportsControllerTest < ActionDispatch::IntegrationTest
     assert_forwarded_to %w[sbk@example.de], proposals: 0
   end
 
-  test 'automatisch: besonderes Ereignis geht nur an die SBK' do
+  # Seit 11.11.2026 verlangt ein besonderes Ereignis kein Berichtsformular
+  # mehr; es wird im Spielbericht beschrieben.
+  test 'automatisch: besonderes Ereignis allein leitet nichts weiter' do
     @game.update!(events: [], special_event: true)
-    assert_forwarded_to %w[sbk@example.de], proposals: 0
+    assert_forwarded_to [], proposals: 0
+  end
+
+  # Vorher machte das besondere Ereignis aus der Matchstrafe einen Mischfall
+  # mit eigener SBK-Mail.
+  test 'automatisch: Matchstrafe mit besonderem Ereignis geht nur an die VSK' do
+    @game.update!(events: [MATCH], special_event: true)
+    mails = assert_forwarded_to %w[vsk@example.de], proposals: 0
+    assert_not_includes body_of(mails.first), 'besonderes Ereignis'
   end
 
   test 'automatisch: Mischfall geht mit je eigener Mail an VSK und SBK' do
     @game.update!(events: [MATCH, TECH], special_event: true)
     mails = assert_forwarded_to %w[vsk@example.de sbk@example.de], proposals: 0
     sbk_body = body_of(mails.find { |m| m.to == ['sbk@example.de'] })
-    # Die Matchstrafe ist Sache der VSK und steht nicht in der SBK-Mail.
-    assert_includes sbk_body, 'eine technische Matchstrafe und ein besonderes Ereignis'
+    # Die Matchstrafe ist Sache der VSK und steht nicht in der SBK-Mail, das
+    # besondere Ereignis ist kein Berichtsanlass mehr.
+    assert_includes sbk_body, 'eine technische Matchstrafe'
+    assert_not_includes sbk_body, 'besonderes Ereignis'
     assert_not_includes sbk_body, 'eine Matchstrafe'
   end
 
@@ -133,18 +145,19 @@ class GameRefereeReportsControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes body_of(mails.first), 'Verfahren vor der VSK einzuleiten'
   end
 
-  test 'manuell: besonderes Ereignis geht an die SBK ohne Verfahrensvorschlag' do
+  test 'manuell: besonderes Ereignis allein leitet nichts weiter' do
     @sa.update!(manual_proceeding_creation: true)
     @game.update!(events: [], special_event: true)
-    assert_forwarded_to %w[sbk@example.de], proposals: 0
+    assert_forwarded_to [], proposals: 0
   end
 
   test 'manuell: Mischfall ist eine SBK-Mail mit allen Gründen plus Verfahrensvorschlag' do
     @sa.update!(manual_proceeding_creation: true)
     @game.update!(events: [MATCH, TECH], special_event: true)
     mails = assert_forwarded_to %w[sbk@example.de], proposals: 1
-    assert_includes body_of(mails.first),
-                    'eine Matchstrafe, eine technische Matchstrafe und ein besonderes Ereignis'
+    body = body_of(mails.first)
+    assert_includes body, 'eine Matchstrafe und eine technische Matchstrafe'
+    assert_not_includes body, 'besonderes Ereignis'
   end
 
   test 'eine Zeitstrafe allein leitet nichts weiter' do
@@ -238,6 +251,14 @@ class GameRefereeReportsControllerTest < ActionDispatch::IntegrationTest
     assert_equal false, response.parsed_body['required']
   end
 
+  test 'GET verlangt bei einem besonderen Ereignis allein keinen Bericht' do
+    @game.update!(events: [], special_event: true)
+    login(@user)
+    get "/api/v2/games/#{@game.id}/referee_report"
+    assert_equal false, response.parsed_body['required']
+    assert_nil response.parsed_body['recipient']
+  end
+
   test 'GET bei abgeschaltetem Berichtsworkflow verlangt keinen Bericht' do
     @sa.update!(report_form_email_enabled: false)
     login(@user)
@@ -246,7 +267,6 @@ class GameRefereeReportsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test 'GET verrät Unbeteiligten nicht, dass ein Bericht verlangt ist' do
-    @game.update!(events: [], special_event: true)
     other = User.create!(user_name: "other_#{SecureRandom.hex(4)}", password: 'password123',
                          password_confirmation: 'password123', permissions: [], teams: [])
     login(other)
