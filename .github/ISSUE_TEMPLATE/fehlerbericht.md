@@ -28,6 +28,13 @@ assignees: ""
 
 <!-- Was tatsächlich passiert ist — inkl. HTTP-Statuscode und (gekürzter) Response, falls vorhanden. -->
 
+### Einstufung
+
+<!-- Hilft bei der Planung, siehe docs/entwicklungsprozess.md. Im Zweifel „weiß nicht“. -->
+
+- Datenbank betroffen (neue Felder, Datenkorrektur): ja / nein / weiß nicht
+- Rechte betroffen (Rollen, wer was sehen oder ändern darf): ja / nein / weiß nicht
+
 ### Zusätzliche Informationen
 
 <!-- Füge hier weitere Informationen (z. B. Protokolle, Zeitpunkt des Auftretens, Screenshots) zum Nachvollziehen des Problems hinzu. -->
