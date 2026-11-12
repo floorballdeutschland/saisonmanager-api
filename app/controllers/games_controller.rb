@@ -928,12 +928,26 @@ class GamesController < ApplicationController
         end
       end
 
+      # Nach dem Abschluss löst eine neue Protestpartei sofort einen Link aus.
+      # Das bleibt der SBK vorbehalten, wie die übrigen Änderungen an einem
+      # abgeschlossenen Bericht.
+      protest_change = params[:game]&.key?(:protest) || params[:game]&.key?(:protest_parties)
+      if protest_change && game.match_record_closed? && !admin_or_scoped_sbk?(game)
+        # 422 statt 403: Ein 403 leitet im Frontend auf die Startseite um.
+        return render json: { message: 'Nach dem Abschluss des Spielberichts kann nur die SBK den Protest ändern.' },
+                      status: :unprocessable_entity
+      end
+
       game.record_created_at ||= Time.now
       game.record_updated_at = Time.now
       game.record_created_by ||= author_user_id
       game.record_updated_by = author_user_id
 
       if game.update(game_flag_params)
+        # Ist der Bericht schon abgeschlossen, geht der Link einer ergänzten
+        # Partei sofort raus; sonst erst beim Abschluss. Läuft bei jedem
+        # Speichern eines Flags, ist aber je Partei idempotent.
+        _send_protest_invitations(game) if game.match_record_closed?
         render json: game.events
       else
         render json: { message: game.errors }, status: :unprocessable_entity
@@ -1080,6 +1094,9 @@ class GamesController < ApplicationController
           special_event_error = _special_event_description_error(game) unless sbk
           return render json: { message: special_event_error }, status: :unprocessable_entity if special_event_error
 
+          protest_error = _protest_parties_error(game) unless sbk
+          return render json: { message: protest_error }, status: :unprocessable_entity if protest_error
+
           checklist_error = _checklist_incomplete_error(game)
           return render json: { message: checklist_error }, status: :unprocessable_entity if checklist_error
         end
@@ -1098,6 +1115,10 @@ class GamesController < ApplicationController
         if %w[match_record_closed finalized].include?(params[:game_status])
           PlayerSuspension.count_closed_game!(game.reload, user_id: current_user&.id)
         end
+
+        # Links an die Protestparteien auch bei direktem `finalized` (die SBK
+        # überspringt den Abschluss), sonst ginge dann nie einer raus.
+        _send_protest_invitations(game) if %w[match_record_closed finalized].include?(params[:game_status])
 
         if params[:game_status] == 'match_record_closed'
           _maybe_send_incident_report_reminder(game)
@@ -1236,6 +1257,24 @@ class GamesController < ApplicationController
         "ist mit #{length} Zeichen zu kurz, nötig sind mindestens #{min} (es fehlen noch #{min - length}). " \
         'Ergänze unter „Sonstige Ereignisse“ im Feld „Besonderes Ereignis“, was passiert ist.'
     end
+  end
+
+  # Wie bei den Unterschriften nicht für Admin und SBK.
+  def _protest_parties_error(game)
+    return nil unless game.protest_parties_missing?
+
+    'Der Spielbericht kann nicht abgeschlossen werden: Es ist ein Protest angehakt, aber keine ' \
+      'Protestpartei ausgewählt. Wähle unter „Sonstige Ereignisse“ aus, wer Protest eingelegt hat ' \
+      '(bei einer Partei, die nicht aufgeführt ist, „Andere“).'
+  end
+
+  # Eine Nebenwirkung des Abschlusses, nicht Teil davon: Der Bericht ist schon
+  # gespeichert, ein Fehler hier darf nicht als Serverfehler zurückkommen.
+  def _send_protest_invitations(game)
+    GameProtestInviter.new(game).call
+  rescue StandardError => e
+    Rails.logger.error("GameProtestInviter fehlgeschlagen (Spiel #{game.id}): #{e.class}: #{e.message}")
+    Sentry.capture_exception(e) if defined?(Sentry)
   end
 
   def _checklist_incomplete_error(game)
@@ -1798,7 +1837,7 @@ class GamesController < ApplicationController
     params.require(:game).permit(:started, :ended,
                                  :time_keeper_signed, :record_keeper_signed, :referee1_signed, :referee2_signed,
                                  :protest, :special_event, :playoff, :overtime,
-                                 :home_captain_signed, :guest_captain_signed)
+                                 :home_captain_signed, :guest_captain_signed, protest_parties: [])
   end
 
   def game_value_params

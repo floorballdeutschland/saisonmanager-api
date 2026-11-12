@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_11_02_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_11_12_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -309,6 +309,19 @@ ActiveRecord::Schema[7.2].define(version: 2026_11_02_100000) do
     t.index ["state_association_id"], name: "index_game_operations_on_state_association_id"
   end
 
+  create_table "game_protests", force: :cascade do |t|
+    t.bigint "game_id", null: false
+    t.string "party", null: false
+    t.string "token_digest", null: false
+    t.jsonb "recipients", default: [], null: false, comment: "Adressen, an die der Upload-Link ging (leer = keine Adresse gefunden)"
+    t.datetime "invited_at"
+    t.datetime "submitted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["game_id", "party"], name: "index_game_protests_on_game_id_and_party", unique: true
+    t.index ["token_digest"], name: "index_game_protests_on_token_digest", unique: true
+  end
+
   create_table "game_referee_reports", force: :cascade do |t|
     t.bigint "game_id", null: false
     t.bigint "uploaded_by_id", null: false
@@ -435,6 +448,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_11_02_100000) do
     t.datetime "report_reviewed_at"
     t.integer "report_reviewed_by_user_id"
     t.text "report_review_comment"
+    t.jsonb "protest_parties", default: [], null: false, comment: "Protestparteien: host, home, guest, referees, other"
     t.index ["checklist_veto_token_digest"], name: "index_games_on_checklist_veto_token_digest", unique: true, where: "(checklist_veto_token_digest IS NOT NULL)"
     t.index ["game_day_id"], name: "index_games_on_game_day_id"
     t.index ["guest_team_id"], name: "index_games_on_guest_team_id"
@@ -1424,6 +1438,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_11_02_100000) do
   add_foreign_key "game_days", "arenas"
   add_foreign_key "game_days", "clubs"
   add_foreign_key "game_days", "leagues"
+  add_foreign_key "game_protests", "games"
   add_foreign_key "game_referee_reports", "games"
   add_foreign_key "game_referee_reports", "users", column: "uploaded_by_id"
   add_foreign_key "game_scans", "games"
