@@ -508,6 +508,26 @@ class Game < ApplicationRecord
     special_event_description_length < SPECIAL_EVENT_DESCRIPTION_MIN_LENGTH
   end
 
+  # Absage beim Abschluss (GamesController#set_game_status), oder nil. Sie
+  # unterscheidet leer und zu kurz und nennt im zweiten Fall die Zahlen:
+  # „mindestens 50 Zeichen" allein liest sich bei 47 getippten wie ein Fehler
+  # der Maske.
+  def special_event_description_error
+    return nil unless special_event_description_missing?
+
+    min = SPECIAL_EVENT_DESCRIPTION_MIN_LENGTH
+    length = special_event_description_length
+    if length.zero?
+      'Der Spielbericht kann nicht abgeschlossen werden: Es ist ein besonderes Ereignis angehakt, ' \
+        'aber noch nicht beschrieben. Beschreibe es unter „Sonstige Ereignisse“ im Feld ' \
+        "„Besonderes Ereignis“. Nötig sind mindestens #{min} Zeichen."
+    else
+      'Der Spielbericht kann nicht abgeschlossen werden: Die Beschreibung des besonderen Ereignisses ' \
+        "ist mit #{length} Zeichen zu kurz, nötig sind mindestens #{min} (es fehlen noch #{min - length}). " \
+        'Ergänze unter „Sonstige Ereignisse“ im Feld „Besonderes Ereignis“, was passiert ist.'
+    end
+  end
+
   # Zählt wie das Frontend (special-event-description.ts): Unicode-Leerraum
   # am Rand weg, dann Zeichen. `String#strip` ließe ein geschütztes Leerzeichen
   # stehen, das JavaScripts `trim` entfernt.

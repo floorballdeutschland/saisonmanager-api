@@ -1077,7 +1077,9 @@ class GamesController < ApplicationController
           signatures_error = _signatures_incomplete_error(game) unless sbk
           return render json: { message: signatures_error }, status: :unprocessable_entity if signatures_error
 
-          special_event_error = _special_event_description_error(game) unless sbk
+          # Wie bei den Unterschriften nicht für Admin und SBK: Sie schließen
+          # auch alte Berichte ab und sollen kein fremdes Ereignis nacherzählen.
+          special_event_error = game.special_event_description_error unless sbk
           return render json: { message: special_event_error }, status: :unprocessable_entity if special_event_error
 
           checklist_error = _checklist_incomplete_error(game)
@@ -1212,30 +1214,6 @@ class GamesController < ApplicationController
     'Auf dem Spielbericht fehlen noch Unterschriften: ' \
       "#{missing.join(', ')}. Erst wenn alle Unterschriften abgehakt sind, " \
       'kann der Spielbericht abgeschlossen werden.'
-  end
-
-  # Wie bei den Unterschriften gilt die Sperre nicht für Admin und SBK: Sie
-  # schließen auch alte Berichte nachträglich ab und sollen dafür nicht ein
-  # fremdes Ereignis nacherzählen müssen.
-  #
-  # Die Meldung unterscheidet leer und zu kurz und nennt im zweiten Fall die
-  # Zahlen: „mindestens 50 Zeichen" allein liest sich bei 47 getippten wie ein
-  # Fehler der Maske.
-  def _special_event_description_error(game)
-    return nil unless game.special_event_description_missing?
-
-    min = Game::SPECIAL_EVENT_DESCRIPTION_MIN_LENGTH
-    length = game.special_event_description_length
-    where = 'Beschreibe es unter „Sonstige Ereignisse“ im Feld „Besonderes Ereignis“.'
-
-    if length.zero?
-      'Der Spielbericht kann nicht abgeschlossen werden: Es ist ein besonderes Ereignis angehakt, ' \
-        "aber noch nicht beschrieben. #{where} Nötig sind mindestens #{min} Zeichen."
-    else
-      'Der Spielbericht kann nicht abgeschlossen werden: Die Beschreibung des besonderen Ereignisses ' \
-        "ist mit #{length} Zeichen zu kurz, nötig sind mindestens #{min} (es fehlen noch #{min - length}). " \
-        'Ergänze unter „Sonstige Ereignisse“ im Feld „Besonderes Ereignis“, was passiert ist.'
-    end
   end
 
   def _checklist_incomplete_error(game)
