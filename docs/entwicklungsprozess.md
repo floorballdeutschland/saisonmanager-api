@@ -30,19 +30,23 @@ Datenschutzregeln wie für die Produktion.
    Tests und RuboCop bzw. ESLint.
 5. **Pull Request gegen `staging`.** Die CI läuft auch dort. Review durch Daniel oder
    Martin; das Ergebnis steht als Kommentar am PR („Review durch …“). ✋
-6. **Merge nach `staging`** als echter Merge-Commit, Branch nicht löschen. Merge heißt nicht
-   Deploy: Deploys werden gebündelt und ausdrücklich angestoßen. ✋
+6. **Merge nach `staging`** als echter Merge-Commit. Der Branch wird für den PR gegen `main`
+   noch gebraucht; im API-Repo löscht GitHub ihn beim Merge trotzdem, dort vor Schritt 8
+   erneut pushen. Merge heißt nicht Deploy: Deploys werden gebündelt und ausdrücklich
+   angestoßen. ✋
 7. **Deploy auf saisonmanager.dev und testen.** Bei Datenbank- oder Rechteänderungen ist
    der Test durch Fachanwender Pflicht (SBK, Vereine, je nach Thema), mit einer
    Testanleitung: welche Rolle, was prüfen, was ist das erwartete Ergebnis. ✋
 8. **PR desselben Branches gegen `main`**, Squash-Merge. Danach `main` zurück nach
    `staging` mergen.
-9. **Release:** eigener PR `chore: Release x.y.z` mit Versionssprung und CHANGELOG-Block.
-   Der Workflow `release.yml` legt daraus das GitHub-Release an.
+9. **Release:** eigener PR `chore: Release x.y.z` mit Versionssprung und CHANGELOG-Block,
+   direkt gegen `main` (die einzige Ausnahme von „erst `staging`“). Sobald die geänderte
+   Versionsdatei auf `main` landet, legt `release.yml` das GitHub-Release an. Danach `main`
+   wieder nach `staging` mergen.
 10. **Deploy Produktion:** erst API (mit Migration), dann Frontend. `deploy.sh` legt vor
     der Migration automatisch einen Datenbank-Dump an. Danach Sichtprüfung. ✋
-11. **Abschluss:** Issue schließen. GitHub schließt Issues nur mit `fixes`/`closes`, nicht
-    mit „Behebt #NN“.
+11. **Abschluss:** Issue schließen. GitHub schließt Issues nur mit `fixes`/`closes` (nicht
+    mit „Behebt #NN“) und nur beim Merge in `main`, ein PR gegen `staging` schließt nichts.
 
 **Alles geht zuerst über `staging`**, auch Änderungen ohne Datenbank- oder Rechtebezug
 (seit 26.10.2026). Nichts landet auf `main`, das nicht vorher auf `staging` war. Die
@@ -50,6 +54,9 @@ Pflicht zum fachlichen Test auf Staging gilt nur für Datenbank- und Rechteände
 
 **Ausnahme `saisonmanager-docker`:** Beide Deploy-Skripte ziehen `main`. Änderungen dort
 gehen per PR direkt nach `main` und wirken beim nächsten Deploy auf beiden Umgebungen.
+Vorsicht bei nginx: Der Staging-Deploy lädt den gemeinsamen nginx mit der
+Produktionskonfiguration neu. Eine nginx-Änderung ist damit schon beim Staging-Deploy
+in der Produktion aktiv.
 
 ## Versionierung und CHANGELOG
 
@@ -67,7 +74,8 @@ CHANGELOG. Bei Konflikten im CHANGELOG die beiden Stände einzeln zusammenführe
 
 ## Branchschutz
 
-`main` ist geschützt (CI muss grün sein, eine Freigabe). Es gibt nur einen festen
+`main` von API und Frontend ist geschützt (CI muss grün sein, eine Freigabe); im
+Docker-Repo ist `main` bisher ungeschützt. Es gibt nur einen festen
 Entwickler, eine zweite Freigabe kommt deshalb in der Regel nicht zustande; gemergt wird
 mit Admin-Rechten. `enforce_admins` bleibt aus diesem Grund aus. Die Freigabe ersetzt
 der Review-Kommentar am PR.
@@ -76,15 +84,18 @@ der Review-Kommentar am PR.
 
 - **Hetzner-Backup** des ganzen Servers, täglich. Eine Wiederherstellung setzt alles
   zurück.
-- **Datenbank-Dump vor jedem Prod-Deploy** (`deploy.sh`, die letzten 10).
-- **Täglicher Datenbank-Dump** per Cronjob (die letzten 14).
+- **Datenbank-Dump vor jedem Prod-Deploy** (`deploy.sh`, die letzten 10, seit
+  saisonmanager-docker#47).
+- **Täglicher Datenbank-Dump** per Cronjob auf dem Server (die letzten 14). Ein
+  Cronjob, der nicht in die Crontab des Servers eingetragen ist, läuft nicht.
 
 Beschrieben in der README von `saisonmanager-docker` (Abschnitt Datenbanksicherung),
 dort auch das Zurückspielen.
 
 ## Datenkorrekturen auf der Produktion
 
-1. Skript schreiben und prüfen, zuerst als Probelauf (`DRY_RUN=1`).
+1. Skript schreiben und prüfen, zuerst als Probelauf (`DRY_RUN=1`, wo das Skript es
+   unterstützt, sonst einen Probelauf einbauen).
 2. Bei Datenbank- oder Rechtebezug zuerst auf Staging laufen lassen.
 3. Ausdrückliche Freigabe, dann Live-Lauf.
 4. Vor Löschungen eine Sicherung.
@@ -94,11 +105,12 @@ dort auch das Zurückspielen.
 
 - Die Repositories sind öffentlich. Zugangsdaten, Schlüssel und Passwörter gehören nie
   ins Repository, auch nicht als Standardwert für die Produktion. Auf dem Server stehen
-  sie in der nicht versionierten `.env` von `saisonmanager-docker`.
-- Ports in den Compose-Dateien nur an `127.0.0.1` binden. Docker umgeht mit
-  veröffentlichten Ports die Firewall des Servers.
+  sie in nicht versionierten Dateien, etwa der `.env` von `saisonmanager-docker`.
+- Ports in den Compose-Dateien außer denen des Webservers (nginx) nur an `127.0.0.1`
+  binden. Docker umgeht mit veröffentlichten Ports die Firewall des Servers.
 - Tokens in Links (Passwort, Bestätigungen, Einladungen) nur als Digest speichern und
-  befristen.
+  befristen. Altbestand, der das noch nicht tut: Bestätigung von Vereinswechseln durch
+  Spieler (`transfer_requests.player_confirmation_token`).
 - Sicherheitslücken nicht als öffentliches Issue melden, siehe `SECURITY.md`.
 
 ## Offene Punkte aus #881

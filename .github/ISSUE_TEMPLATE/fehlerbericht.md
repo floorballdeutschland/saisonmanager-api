@@ -26,7 +26,7 @@ assignees: ""
 
 ### Tatsächliches Verhalten
 
-<!-- Was tatsächlich passiert ist — inkl. HTTP-Statuscode und (gekürzter) Response, falls vorhanden. -->
+<!-- Was tatsächlich passiert ist, inkl. HTTP-Statuscode und (gekürzter) Response, falls vorhanden. -->
 
 ### Einstufung
 
