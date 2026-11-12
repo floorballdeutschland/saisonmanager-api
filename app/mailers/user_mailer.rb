@@ -1,6 +1,8 @@
 class UserMailer < ApplicationMailer
-  def reset_password(user)
-    @link = "#{FrontendUrl.base}/neues-passwort/#{user.password_reset_token}"
+  # Das Token kommt in allen drei Link-Mails als Argument: In der Datenbank
+  # steht nur sein Digest (User#issue_password_reset_token).
+  def reset_password(user, token)
+    @link = "#{FrontendUrl.base}/neues-passwort/#{token}"
     @username = user.user_name
     templated_mail(
       to: user.email,
@@ -70,8 +72,8 @@ class UserMailer < ApplicationMailer
   # Begrüßungs-Mail beim Anlegen eines Schiedsrichter-Benutzerkontos: enthält den
   # Benutzernamen und einen Link zum (erstmaligen) Setzen des Passworts – bewusst
   # KEINE „Passwort vergessen"-Mail, da der Account gerade neu erstellt wurde.
-  def referee_account_created(user)
-    @link = "#{FrontendUrl.base}/neues-passwort/#{user.password_reset_token}"
+  def referee_account_created(user, token)
+    @link = "#{FrontendUrl.base}/neues-passwort/#{token}"
     @username = user.user_name
     # Bei den per Massenanlage erzeugten Konten ist der Vorname gesetzt; fehlt er,
     # bleibt die Anrede das schlichte "Hallo," statt "Hallo ,".
@@ -86,8 +88,8 @@ class UserMailer < ApplicationMailer
   # Einladung einer neu angelegten Kursleitung (RefereeCourseLeadAssigner). Wie
   # bei referee_account_created verlaesst das Passwort den Server nur ueber den
   # Link.
-  def course_lead_invited(user, course)
-    @link = "#{FrontendUrl.base}/neues-passwort/#{user.password_reset_token}"
+  def course_lead_invited(user, course, token)
+    @link = "#{FrontendUrl.base}/neues-passwort/#{token}"
     @username = user.user_name
     @first_name = user.first_name.presence
     @course_title = course.title

@@ -18,17 +18,18 @@ class TemplatedMailerBodyTest < ActionMailer::TestCase
       mailer_class: 'UserMailer', action_name: 'reset_password', locale: 'de',
       body: '<p>Individueller Text im Body</p>'
     )
-    mail = UserMailer.reset_password(@user)
+    mail = UserMailer.reset_password(@user, 'tok')
     assert_includes mail.body.encoded, 'Individueller Text im Body'
   end
 
   test 'ohne gepflegten Body greift unverändert das ERB-View' do
-    mail = UserMailer.reset_password(@user)
+    mail = UserMailer.reset_password(@user, 'tok')
     assert mail.body.encoded.present?
+    assert_includes mail.body.encoded, '/neues-passwort/tok'
   end
 
   test 'Passwort-Reset-Mail nennt den Benutzernamen und den Login-Hinweis' do
-    mail = UserMailer.reset_password(@user)
+    mail = UserMailer.reset_password(@user, 'tok')
     assert_includes mail.body.encoded, @user.user_name
     assert_includes mail.body.encoded, 'E-Mail-Adresse'
   end
@@ -38,7 +39,7 @@ class TemplatedMailerBodyTest < ActionMailer::TestCase
       mailer_class: 'UserMailer', action_name: 'reset_password', locale: 'de',
       body: '<p>ok</p><script>alert(1)</script>'
     )
-    mail = UserMailer.reset_password(@user)
+    mail = UserMailer.reset_password(@user, 'tok')
     assert_includes mail.body.encoded, 'ok'
     assert_not_includes mail.body.encoded, '<script>'
   end

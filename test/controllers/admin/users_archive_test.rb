@@ -63,7 +63,7 @@ module Admin
         post '/api/v2/lost_password', params: { username: @target.user_name }
       end
       assert_response :success
-      assert_nil @target.reload.password_reset_token
+      assert_nil @target.reload.password_reset_token_digest
     end
 
     test 'laufende Session eines archivierten Kontos endet mit 401' do

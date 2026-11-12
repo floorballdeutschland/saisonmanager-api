@@ -176,6 +176,22 @@ module Admin
       assert_equal referee.id, User.find_by(referee_id: referee.id).referee_id
     end
 
+    test 'Massenanlage: der Link aus der Mail passt zum gespeicherten Digest und gilt 14 Tage' do
+      referee = create(:referee, email: 'massen2@example.org', gueltigkeit: 1.year.from_now)
+      login(admin_user)
+
+      perform_enqueued_jobs do
+        post '/api/v2/admin/referees/create_missing_users'
+      end
+      assert_response :success
+
+      user = User.find_by!(referee_id: referee.id)
+      mail = ActionMailer::Base.deliveries.last
+      link_token = (mail.html_part || mail.text_part || mail).body.decoded[%r{/neues-passwort/([A-Za-z0-9_-]+)}, 1]
+      assert_equal user, User.find_by_password_reset_token(link_token)
+      assert_in_delta User::ACCOUNT_INVITATION_VALIDITY.from_now, user.password_reset_expires_at, 5.seconds
+    end
+
     test 'Massenanlage ueberspringt Beendete, Kontolose ohne Adresse und Gaeste' do
       create(:referee, email: 'beendet@example.org', gueltigkeit: Date.new(2019, 1, 1))
       create(:referee, email: nil, gueltigkeit: 1.year.from_now)

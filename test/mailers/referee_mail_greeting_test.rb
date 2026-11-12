@@ -104,18 +104,15 @@ class RefereeMailGreetingTest < ActionMailer::TestCase
 
   test 'Schiedsrichterkonto-Mail gruesst mit dem Vornamen des Kontos' do
     user = create(:user, first_name: 'Dora', last_name: 'Test', email: 'konto@example.de')
-    user.update!(password_reset_token: 'tok123')
-
-    body = UserMailer.referee_account_created(user).body.encoded
+    body = UserMailer.referee_account_created(user, 'tok123').body.encoded
 
     assert_includes body, 'Hallo Dora,'
+    assert_includes body, '/neues-passwort/tok123'
   end
 
   test 'Schiedsrichterkonto-Mail ohne Vornamen bleibt beim schlichten Hallo' do
     user = create(:user, first_name: nil, last_name: nil, email: 'konto2@example.de')
-    user.update!(password_reset_token: 'tok456')
-
-    body = UserMailer.referee_account_created(user).body.encoded
+    body = UserMailer.referee_account_created(user, 'tok456').body.encoded
 
     assert_includes body, 'Hallo,'
   end
