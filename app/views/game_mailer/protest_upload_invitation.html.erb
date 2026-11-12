@@ -1,0 +1,30 @@
+<h2>Protest – Spiel Nr. <%= @game.game_number %></h2>
+
+<p>Hallo,</p>
+
+<p>
+  im Spielbericht zu Spiel Nr. <strong><%= @game.game_number %></strong>
+  (<%= @game.home_team_name %> vs. <%= @game.guest_team_name %><% if @game_day&.date.present? %>,
+  <%= format_game_day_date(@game_day.date) %><% end %>) ist ein Protest von
+  <strong><%= @party_label %></strong> vermerkt.
+</p>
+
+<p>
+  Bitte ladet das ausgefüllte und unterschriebene Protestformular als PDF über
+  diesen Link hoch:
+</p>
+
+<p>
+  <a href="<%= @upload_url %>"><%= @upload_url %></a>
+</p>
+
+<p>
+  Eine Anmeldung ist nicht nötig. Der Link gilt nur für diesen Protest und nur
+  für ein Formular; nach dem Hochladen geht es automatisch an die zuständige
+  SBK. Ein separater Versand per E-Mail ist nicht mehr nötig. Die Fristen der
+  Rechts- und Verfahrensordnung gelten unverändert.
+</p>
+
+<p>
+  Bei Fragen antwortet einfach auf diese E-Mail.
+</p>

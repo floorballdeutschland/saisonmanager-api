@@ -417,6 +417,7 @@ Rails.application.routes.draw do
         end
         # Erledigt-Vermerk der SBK in der Arbeitsansicht „Spielberichte".
         post   'games/:game_id/report_review', to: 'game_report_reviews#create'
+        get    'games/:game_id/protests/:party/file', to: 'game_protests#file'
         delete 'games/:game_id/report_review', to: 'game_report_reviews#destroy'
         resources :state_associations, only: %i[index show create update destroy] do
           resources :checklist_items, only: %i[create update destroy],
@@ -590,6 +591,11 @@ Rails.application.routes.draw do
       # Abgabe ohne Anmeldung über Einmal-Link (Kapitän*in / Feedback-Kontakt).
       get  'referee_feedback_invitations/:token', to: 'referee_feedback_invitations#show'
       post 'referee_feedback_invitations/:token', to: 'referee_feedback_invitations#create'
+
+      # Upload des Protestformulars ohne Anmeldung über den Link an die
+      # Protestpartei (GameProtestInviter).
+      get  'protests/:token', to: 'protests#show'
+      post 'protests/:token', to: 'protests#create'
 
       # Öffentlicher Antrag auf einen API-Zugang, ohne Anmeldung. Der Abhol-Link
       # zeigt den genehmigten Key genau einmal an; GET prüft nur den Zustand,

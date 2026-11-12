@@ -98,6 +98,7 @@ module Admin
       scope = Game.joins(game_day: :league).includes(
         :home_team, :guest_team, :proceeding_proposal,
         { game_scan: :uploaded_by }, { game_referee_report: :uploaded_by },
+        { game_protests: { file_attachment: :blob } },
         game_day: [{ league: { game_operation: { state_association: :checklist_items } } }, :arena, :club]
       )
 
@@ -205,6 +206,7 @@ module Admin
         scan: scan_hash(game, game_day),
         referee_report: referee_report_hash(game),
         proceeding_proposal: proceeding_proposal_hash(game),
+        protests: protests_hash(game),
         checklist_negative_count: negative.size,
         checklist_negative_items: negative,
         checklist_veto_submitted_at: game.checklist_veto_submitted_at,
@@ -249,6 +251,33 @@ module Admin
         uploaded_by_name: report.uploaded_by&.fullname&.strip.presence,
         uploaded_by_email: report.uploaded_by&.email.presence
       }
+    end
+
+    # Je gewählter Partei (Game#protest_parties) und je vorhandenem Protest
+    # einer inzwischen abgewählten Partei eine Zeile. „other" ohne Link, der
+    # Vorgang läuft manuell. Ohne Protest leer.
+    #
+    # recipient_count 0 heißt: Es gab keine Adresse, der Link wurde nicht
+    # zugestellt. Die Adressen selbst stehen nicht in der Übersicht.
+    def protests_hash(game)
+      by_party = game.game_protests.index_by(&:party)
+      parties = (Array(game.protest_parties) | by_party.keys)
+                .sort_by { |party| Game::PROTEST_PARTIES.index(party) || 99 }
+      return [] if parties.empty?
+
+      parties.map do |party|
+        protest = by_party[party]
+        {
+          party:,
+          label: game.protest_party_label(party),
+          selected: Array(game.protest_parties).include?(party),
+          manual: party == 'other',
+          invited_at: protest&.invited_at,
+          recipient_count: protest&.recipients&.size,
+          submitted_at: protest&.submitted_at,
+          filename: protest&.file&.attached? ? protest.file.filename.to_s : nil
+        }
+      end
     end
 
     def proceeding_proposal_hash(game)

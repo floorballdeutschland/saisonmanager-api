@@ -22,6 +22,7 @@ class Game < ApplicationRecord
   has_one :referee_assignment, dependent: :destroy
   has_one :game_referee_report, dependent: :destroy
   has_one :game_scan, dependent: :destroy
+  has_many :game_protests, dependent: :destroy
   has_one :proceeding_proposal, dependent: :destroy
   has_many :referee_feedbacks, dependent: :destroy
   # Ohne dependent: :destroy blieben beim Löschen eines Spiels (Spielplan-
@@ -127,6 +128,18 @@ class Game < ApplicationRecord
   # die Arbeitsansicht „Spielberichte" an Admin und SBK.
   REPORT_REVIEW_ATTRIBUTES = %w[report_reviewed_at report_reviewed_by_user_id report_review_comment].freeze
 
+  # Wer protestiert, gehört wie der Vermerk zum besonderen Ereignis zum
+  # internen Teil des Spielberichts und geht nur über #hidden_elements und die
+  # Arbeitsansicht der SBK hinaus, nicht über die öffentliche Spielseite.
+  PROTEST_ATTRIBUTES = %w[protest_parties].freeze
+
+  # Protestparteien in der Reihenfolge der Berichtsmaske. „other" (Andere)
+  # löst nichts aus, der Vorgang läuft dann außerhalb des Systems.
+  PROTEST_PARTIES = %w[host home guest referees other].freeze
+
+  before_validation :normalize_protest_parties
+  validate :protest_parties_available
+
   # Ein festgesetztes Forfait-Ergebnis wird immer als Paar gefuehrt: nur eine
   # Seite gesetzt hiesse, die andere aus der Liga-Vorgabe zu ergaenzen -- ein
   # Mischergebnis, das niemand so beschlossen hat.
@@ -172,6 +185,39 @@ class Game < ApplicationRecord
     missing_signatures.map { |field| REQUIRED_SIGNATURES[field] }
   end
 
+  # Ausrichter als eigene Partei nur, wenn er nicht das Heimteam stellt. Sonst
+  # wäre dieselbe Mannschaft zweimal wählbar und bekäme zwei Links.
+  def host_separate_from_home?
+    host_club_id = game_day&.club_id
+    host_club_id.present? && host_club_id != home_team&.club_id
+  end
+
+  def available_protest_parties
+    PROTEST_PARTIES.reject { |party| party == 'host' && !host_separate_from_home? }
+  end
+
+  def protest_party_label(party)
+    case party
+    when 'host' then "Ausrichter (#{game_day&.club&.name})"
+    when 'home'
+      host_separate_from_home? ? "Heimteam (#{home_team&.name})" : "Heimteam / Ausrichter (#{home_team&.name})"
+    when 'guest' then "Gastteam (#{guest_team&.name})"
+    when 'referees' then 'Schiedsrichter*innen'
+    when 'other' then 'Andere'
+    else party.to_s
+    end
+  end
+
+  def protest_party_options
+    available_protest_parties.map { |party| { key: party, label: protest_party_label(party) } }
+  end
+
+  # Haken „Protest" ohne gewählte Partei: Dann geht beim Abschluss keine Mail
+  # raus, und niemand weiß, wer protestiert hat.
+  def protest_parties_missing?
+    protest? && Array(protest_parties).empty?
+  end
+
   # Im Tabletmodus erfasst? Davon hängt ab, ob die öffentliche Spielseite die
   # ausführliche Statistik und die Highlights zeigt, nicht von einer
   # Einstellung (fe#344).
@@ -196,7 +242,7 @@ class Game < ApplicationRecord
     options = (options || {}).dup
     unless options[:only]
       options[:except] = Array(options[:except]) + REFEREE_NOTES_ATTRIBUTES + REPORT_REVIEW_ATTRIBUTES +
-                         SECRET_ATTRIBUTES
+                         SECRET_ATTRIBUTES + PROTEST_ATTRIBUTES
     end
     super(options)
   end
@@ -1345,6 +1391,8 @@ class Game < ApplicationRecord
       missing_signatures:,
 
       protest:,
+      protest_parties:,
+      protest_party_options:,
       special_event:,
       playoff:,
       overtime:,
@@ -2218,6 +2266,20 @@ class Game < ApplicationRecord
 
     self.forfait_home_goals = nil
     self.forfait_guest_goals = nil
+  end
+
+  # Ohne Protest keine Parteien; Reihenfolge und Dubletten wie in der Maske.
+  def normalize_protest_parties
+    self.protest_parties = protest? ? PROTEST_PARTIES & Array(protest_parties).map(&:to_s) : []
+  end
+
+  # Nur Parteien, die für dieses Spiel wählbar sind. „host" bei einem
+  # Ausrichter, der zugleich Heimteam ist, wäre eine Dublette von „home".
+  def protest_parties_available
+    invalid = Array(protest_parties) - available_protest_parties
+    return if invalid.empty? || !protest_parties_changed?
+
+    errors.add(:base, "Diese Protestpartei ist für das Spiel nicht wählbar: #{invalid.join(', ')}")
   end
 
   def forfait_goals_are_a_complete_pair
