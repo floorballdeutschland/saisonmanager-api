@@ -947,7 +947,7 @@ class GamesController < ApplicationController
         # Ist der Bericht schon abgeschlossen, geht der Link einer ergänzten
         # Partei sofort raus; sonst erst beim Abschluss. Läuft bei jedem
         # Speichern eines Flags, ist aber je Partei idempotent.
-        _send_protest_invitations(game) if game.match_record_closed?
+        GameProtestInviter.call_safely(game) if game.match_record_closed?
         render json: game.events
       else
         render json: { message: game.errors }, status: :unprocessable_entity
@@ -1091,10 +1091,12 @@ class GamesController < ApplicationController
           signatures_error = _signatures_incomplete_error(game) unless sbk
           return render json: { message: signatures_error }, status: :unprocessable_entity if signatures_error
 
-          special_event_error = _special_event_description_error(game) unless sbk
+          # Wie bei den Unterschriften nicht für Admin und SBK: Sie schließen
+          # auch alte Berichte ab und sollen kein fremdes Ereignis nacherzählen.
+          special_event_error = game.special_event_description_error unless sbk
           return render json: { message: special_event_error }, status: :unprocessable_entity if special_event_error
 
-          protest_error = _protest_parties_error(game) unless sbk
+          protest_error = game.protest_parties_error unless sbk
           return render json: { message: protest_error }, status: :unprocessable_entity if protest_error
 
           checklist_error = _checklist_incomplete_error(game)
@@ -1118,7 +1120,7 @@ class GamesController < ApplicationController
 
         # Links an die Protestparteien auch bei direktem `finalized` (die SBK
         # überspringt den Abschluss), sonst ginge dann nie einer raus.
-        _send_protest_invitations(game) if %w[match_record_closed finalized].include?(params[:game_status])
+        GameProtestInviter.call_safely(game) if %w[match_record_closed finalized].include?(params[:game_status])
 
         if params[:game_status] == 'match_record_closed'
           _maybe_send_incident_report_reminder(game)
@@ -1233,48 +1235,6 @@ class GamesController < ApplicationController
     'Auf dem Spielbericht fehlen noch Unterschriften: ' \
       "#{missing.join(', ')}. Erst wenn alle Unterschriften abgehakt sind, " \
       'kann der Spielbericht abgeschlossen werden.'
-  end
-
-  # Wie bei den Unterschriften gilt die Sperre nicht für Admin und SBK: Sie
-  # schließen auch alte Berichte nachträglich ab und sollen dafür nicht ein
-  # fremdes Ereignis nacherzählen müssen.
-  #
-  # Die Meldung unterscheidet leer und zu kurz und nennt im zweiten Fall die
-  # Zahlen: „mindestens 50 Zeichen" allein liest sich bei 47 getippten wie ein
-  # Fehler der Maske.
-  def _special_event_description_error(game)
-    return nil unless game.special_event_description_missing?
-
-    min = Game::SPECIAL_EVENT_DESCRIPTION_MIN_LENGTH
-    length = game.special_event_description_length
-    where = 'Beschreibe es unter „Sonstige Ereignisse“ im Feld „Besonderes Ereignis“.'
-
-    if length.zero?
-      'Der Spielbericht kann nicht abgeschlossen werden: Es ist ein besonderes Ereignis angehakt, ' \
-        "aber noch nicht beschrieben. #{where} Nötig sind mindestens #{min} Zeichen."
-    else
-      'Der Spielbericht kann nicht abgeschlossen werden: Die Beschreibung des besonderen Ereignisses ' \
-        "ist mit #{length} Zeichen zu kurz, nötig sind mindestens #{min} (es fehlen noch #{min - length}). " \
-        'Ergänze unter „Sonstige Ereignisse“ im Feld „Besonderes Ereignis“, was passiert ist.'
-    end
-  end
-
-  # Wie bei den Unterschriften nicht für Admin und SBK.
-  def _protest_parties_error(game)
-    return nil unless game.protest_parties_missing?
-
-    'Der Spielbericht kann nicht abgeschlossen werden: Es ist ein Protest angehakt, aber keine ' \
-      'Protestpartei ausgewählt. Wähle unter „Sonstige Ereignisse“ aus, wer Protest eingelegt hat ' \
-      '(bei einer Partei, die nicht aufgeführt ist, „Andere“).'
-  end
-
-  # Eine Nebenwirkung des Abschlusses, nicht Teil davon: Der Bericht ist schon
-  # gespeichert, ein Fehler hier darf nicht als Serverfehler zurückkommen.
-  def _send_protest_invitations(game)
-    GameProtestInviter.new(game).call
-  rescue StandardError => e
-    Rails.logger.error("GameProtestInviter fehlgeschlagen (Spiel #{game.id}): #{e.class}: #{e.message}")
-    Sentry.capture_exception(e) if defined?(Sentry)
   end
 
   def _checklist_incomplete_error(game)
@@ -1459,8 +1419,8 @@ class GamesController < ApplicationController
     # (Papierbericht) – dann ist auch keine 24h-Frist zu melden.
     return unless game.report_form_workflow_enabled?
 
-    # Volle oder technische Matchstrafe, erkannt über das Mapping der Strafe
-    # (api#789). Ein besonderes Ereignis verlangt kein Berichtsformular mehr.
+    # Volle Matchstrafe, technische Matchstrafe oder besonderes Ereignis,
+    # erkannt über das Mapping der Strafe (api#789).
     return unless game.report_form_required?
 
     assignment = game.referee_assignment
