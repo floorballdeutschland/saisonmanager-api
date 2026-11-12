@@ -1077,6 +1077,11 @@ class GamesController < ApplicationController
           signatures_error = _signatures_incomplete_error(game) unless sbk
           return render json: { message: signatures_error }, status: :unprocessable_entity if signatures_error
 
+          # Wie bei den Unterschriften nicht für Admin und SBK: Sie schließen
+          # auch alte Berichte ab und sollen kein fremdes Ereignis nacherzählen.
+          special_event_error = game.special_event_description_error unless sbk
+          return render json: { message: special_event_error }, status: :unprocessable_entity if special_event_error
+
           checklist_error = _checklist_incomplete_error(game)
           return render json: { message: checklist_error }, status: :unprocessable_entity if checklist_error
         end
@@ -1393,8 +1398,8 @@ class GamesController < ApplicationController
     # (Papierbericht) – dann ist auch keine 24h-Frist zu melden.
     return unless game.report_form_workflow_enabled?
 
-    # Volle Matchstrafe, technische Matchstrafe oder besonderes Ereignis,
-    # erkannt über das Mapping der Strafe (api#789).
+    # Volle oder technische Matchstrafe, erkannt über das Mapping der Strafe
+    # (api#789). Ein besonderes Ereignis verlangt kein Berichtsformular mehr.
     return unless game.report_form_required?
 
     assignment = game.referee_assignment

@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Besonderes Ereignis braucht eine Beschreibung statt eines Berichtsformulars**: Ein besonderes Ereignis verlangt kein Berichtsformular der Schiedsrichter mehr; es löst weder die 24h-Erinnerung aus noch wird es beim Upload als Anlass genannt oder an die SBK weitergeleitet. Matchstrafen und technische Matchstrafen bleiben unverändert. Stattdessen lässt sich ein Spielbericht mit angehaktem besonderem Ereignis erst abschließen, wenn die Beschreibung mindestens 50 Zeichen hat (Leerraum am Rand zählt nicht). Die Ablehnung unterscheidet eine fehlende von einer zu kurzen Beschreibung und nennt im zweiten Fall Zeichenzahl und Rest. Wie bei den Unterschriften gilt die Sperre nicht für Admin und die SBK des Spielbetriebs. Die Spielberichte-Übersicht der SBK liefert den Haken jetzt als eigenes Flag `special_event`, damit ein besonderes Ereignis auch ohne Beschreibung als Auffälligkeit erscheint. Eine in der Verwaltung gepflegte Vorlage der Erinnerungsmail, die das besondere Ereignis im Text nennt, muss von Hand angepasst werden.
+
 ## [2.7.0] - 2026-11-11
 
 ### Neu
