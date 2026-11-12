@@ -107,6 +107,7 @@ class RefereeMailGreetingTest < ActionMailer::TestCase
     body = UserMailer.referee_account_created(user, 'tok123').body.encoded
 
     assert_includes body, 'Hallo Dora,'
+    assert_includes body, '/neues-passwort/tok123'
   end
 
   test 'Schiedsrichterkonto-Mail ohne Vornamen bleibt beim schlichten Hallo' do

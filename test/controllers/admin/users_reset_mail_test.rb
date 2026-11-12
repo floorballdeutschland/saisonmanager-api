@@ -74,6 +74,28 @@ module Admin
       assert User.exists?(user_name: 'ohne.mail')
     end
 
+    test 'neu angelegtes Konto bekommt einen 14 Tage gueltigen Einladungslink' do
+      login(@admin)
+
+      post '/api/v2/admin/users', params: {
+        user: { user_name: 'neu.konto', first_name: 'Neu', last_name: 'Konto', email: 'neu@example.org' },
+        role: { user_group_id: 1 }
+      }
+
+      assert_response :created
+      user = User.find_by!(user_name: 'neu.konto')
+      assert_in_delta User::ACCOUNT_INVITATION_VALIDITY.from_now, user.password_reset_expires_at, 5.seconds
+    end
+
+    test 'Versand aus der Verwaltung fuer ein bestehendes Konto gilt 24 Stunden' do
+      login(@admin)
+
+      post "/api/v2/admin/users/#{@managed.id}/trigger_password_reset"
+
+      assert_response :success
+      assert_in_delta User::PASSWORD_RESET_VALIDITY.from_now, @managed.reload.password_reset_expires_at, 5.seconds
+    end
+
     # Gegenprobe zum Transportfehler: Eine kaputte Mailvorlage ist keine
     # vorübergehende Störung, sondern eine Fehlkonfiguration, die ohne lauten
     # Fehler den Passwort-Reset systemweit stumm ausser Betrieb setzen würde.

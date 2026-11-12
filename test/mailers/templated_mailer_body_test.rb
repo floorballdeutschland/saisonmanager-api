@@ -25,6 +25,7 @@ class TemplatedMailerBodyTest < ActionMailer::TestCase
   test 'ohne gepflegten Body greift unverändert das ERB-View' do
     mail = UserMailer.reset_password(@user, 'tok')
     assert mail.body.encoded.present?
+    assert_includes mail.body.encoded, '/neues-passwort/tok'
   end
 
   test 'Passwort-Reset-Mail nennt den Benutzernamen und den Login-Hinweis' do

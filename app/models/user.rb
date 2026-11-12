@@ -181,7 +181,7 @@ class User < ApplicationRecord
   # hätte damit jedes Konto mit offenem Link übernehmen können.
   #
   # „Passwort vergessen" und der Versand aus der Verwaltung gelten 24 Stunden.
-  # Einladungen für neu angelegte Konten (Schiedsrichter-Massenanlage,
+  # Einladungen für neu angelegte Konten (Benutzerverwaltung, Schiedsrichter-Massenanlage,
   # Kursleitung) gelten länger, weil sie oft erst Tage später geöffnet werden.
   PASSWORD_RESET_VALIDITY = 24.hours
   ACCOUNT_INVITATION_VALIDITY = 14.days
@@ -231,8 +231,10 @@ class User < ApplicationRecord
   #
   # Das save steht ausserhalb des rescue: Ein Schreibfehler ist ein
   # Datenbankproblem und darf nicht als Mailproblem gemeldet werden.
-  def send_reset_information
-    token = issue_password_reset_token
+  # valid_for: Beim Anlegen eines Kontos ist der Link eine Einladung und gilt
+  # ACCOUNT_INVITATION_VALIDITY, sonst 24 Stunden.
+  def send_reset_information(valid_for: PASSWORD_RESET_VALIDITY)
+    token = issue_password_reset_token(valid_for:)
     return false unless save(validate: false)
 
     begin

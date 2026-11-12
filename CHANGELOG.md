@@ -11,7 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
-- **Links zum Setzen des Passworts laufen ab und stehen nicht mehr im Klartext in der Datenbank**: Gespeichert wird nur noch der SHA256-Digest des Tokens (`users.password_reset_token_digest`) mit Ablaufzeitpunkt (`password_reset_expires_at`); die Klartextspalte `password_reset_token` entfällt. „Passwort vergessen" und der Versand aus der Benutzerverwaltung gelten 24 Stunden, Einladungen für neu angelegte Schiedsrichter- und Kursleitungskonten 14 Tage. Ein neuer Link macht den vorherigen ungültig, archivierte Konten setzen über einen Link kein Passwort mehr. Mit der Migration werden alle offenen Links ungültig und lassen sich über „Passwort vergessen" neu anfordern.
+- **Links zum Setzen des Passworts laufen ab und stehen nicht mehr im Klartext in der Datenbank**: Gespeichert wird nur noch der SHA256-Digest des Tokens (`users.password_reset_token_digest`) mit Ablaufzeitpunkt (`password_reset_expires_at`); die Klartextspalte `password_reset_token` entfällt. „Passwort vergessen" und der Versand aus der Benutzerverwaltung gelten 24 Stunden, Einladungen für neu angelegte Konten (Benutzerverwaltung, Schiedsrichter-Massenanlage, Kursleitung) 14 Tage. Die Zustellung im Hintergrund schreibt ihre Argumente nicht mehr ins Log, weil darin jetzt das Token des Links steht. Ein neuer Link macht den vorherigen ungültig, archivierte Konten setzen über einen Link kein Passwort mehr. Mit der Migration werden alle offenen Links ungültig und lassen sich über „Passwort vergessen" neu anfordern.
 
 ## [2.8.0] - 2026-11-12
 

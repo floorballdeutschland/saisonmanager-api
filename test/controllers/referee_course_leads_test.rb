@@ -27,10 +27,11 @@ class RefereeCourseLeadsTest < ActionDispatch::IntegrationTest
 
   test 'neue Person wird als kl-nachname angelegt und eingeladen' do
     login(@rsk)
-    assert_enqueued_emails 1 do
+    perform_enqueued_jobs do
       post "/api/v2/admin/referee_courses/#{@course.id}/leads",
            params: { lead: { first_name: 'Jörg', last_name: 'Müller', email: 'Joerg@Example.org' } }, as: :json
     end
+    assert_equal 1, ActionMailer::Base.deliveries.size
     assert_response :created
     assert response.parsed_body['invited']
     user = User.find(response.parsed_body['user_id'])
@@ -39,6 +40,9 @@ class RefereeCourseLeadsTest < ActionDispatch::IntegrationTest
     assert lead_role?(user)
     assert user.password_reset_token_digest.present?
     assert_in_delta User::ACCOUNT_INVITATION_VALIDITY.from_now, user.password_reset_expires_at, 5.seconds
+    mail = ActionMailer::Base.deliveries.last
+    link_token = (mail.html_part || mail.text_part || mail).body.decoded[%r{/neues-passwort/([A-Za-z0-9_-]+)}, 1]
+    assert_equal user, User.find_by_password_reset_token(link_token)
   end
 
   test 'Schiri mit Konto bekommt die Rolle zusaetzlich, ohne Einladung' do

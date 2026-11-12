@@ -133,4 +133,39 @@ class UsersControllerTest < ActionDispatch::IntegrationTest
     assert_equal Digest::SHA256.hexdigest(link_token), @user.reload.password_reset_token_digest
     assert_in_delta User::ACCOUNT_INVITATION_VALIDITY.from_now, @user.password_reset_expires_at, 5.seconds
   end
+
+  test 'nach 25 Stunden ist der Link abgelaufen' do
+    travel 25.hours do
+      reset_password('NeuesGeheim1234')
+      assert_response :not_found
+    end
+  end
+
+  test 'Einladungslink gilt 14 Tage, danach nicht mehr' do
+    token = @user.issue_password_reset_token(valid_for: User::ACCOUNT_INVITATION_VALIDITY)
+    @user.save!(validate: false)
+
+    travel 15.days do
+      reset_password('NeuesGeheim1234', token:)
+      assert_response :not_found
+    end
+    travel 13.days do
+      reset_password('NeuesGeheim1234', token:)
+      assert_response :ok
+    end
+  end
+
+  test 'Benutzerliste liefert weder Passwort-Hash noch Reset-Digest aus' do
+    admin = create(:user, :admin)
+    post '/api/v2/login', params: { username: admin.user_name, password: 'password123' }
+
+    get '/users'
+
+    assert_response :success
+    entry = response.parsed_body.find { |u| u['id'] == @user.id }
+    assert entry
+    %w[password_digest password_reset_token_digest password_reset_expires_at].each do |key|
+      assert_not entry.key?(key), key
+    end
+  end
 end
