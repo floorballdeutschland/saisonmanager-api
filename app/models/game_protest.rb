@@ -37,8 +37,34 @@ class GameProtest < ApplicationRecord
     [protest, raw_token]
   end
 
+  # Neuer Link für denselben Protest (Admin::GameProtestsController#resend).
+  # Der alte Token verliert dabei seine Gültigkeit, damit nie zwei Links für
+  # dieselbe Abgabe kursieren. Liefert den Rohtoken.
+  def regenerate_token!(recipients:)
+    raw_token = SecureRandom.urlsafe_base64(32)
+    update!(token_digest: Digest::SHA256.hexdigest(raw_token), recipients:, invited_at: Time.current)
+    raw_token
+  end
+
   def submitted?
     submitted_at.present?
+  end
+
+  # Eine Zeile der Arbeitsansicht „Spielberichte" je Partei, auch für eine
+  # gewählte Partei ohne Protest (noch nicht abgeschlossen, oder „other").
+  # recipient_count 0 heißt: keine Adresse, der Link wurde nicht zugestellt.
+  # Die Adressen selbst gehen nicht ins Frontend.
+  def self.overview_row(game, party, protest)
+    {
+      party:,
+      label: game.protest_party_label(party),
+      selected: Array(game.protest_parties).include?(party),
+      manual: party == 'other',
+      invited_at: protest&.invited_at,
+      recipient_count: protest&.recipients&.size,
+      submitted_at: protest&.submitted_at,
+      filename: protest&.file&.attached? ? protest.file.filename.to_s : nil
+    }
   end
 
   def party_label

@@ -418,6 +418,7 @@ Rails.application.routes.draw do
         # Erledigt-Vermerk der SBK in der Arbeitsansicht „Spielberichte".
         post   'games/:game_id/report_review', to: 'game_report_reviews#create'
         get    'games/:game_id/protests/:party/file', to: 'game_protests#file'
+        post   'games/:game_id/protests/:party/resend', to: 'game_protests#resend'
         delete 'games/:game_id/report_review', to: 'game_report_reviews#destroy'
         resources :state_associations, only: %i[index show create update destroy] do
           resources :checklist_items, only: %i[create update destroy],

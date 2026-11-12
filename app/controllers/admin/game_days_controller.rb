@@ -254,30 +254,15 @@ module Admin
     end
 
     # Je gewählter Partei (Game#protest_parties) und je vorhandenem Protest
-    # einer inzwischen abgewählten Partei eine Zeile. „other" ohne Link, der
-    # Vorgang läuft manuell. Ohne Protest leer.
-    #
-    # recipient_count 0 heißt: Es gab keine Adresse, der Link wurde nicht
-    # zugestellt. Die Adressen selbst stehen nicht in der Übersicht.
+    # einer inzwischen abgewählten Partei eine Zeile (GameProtest.overview_row).
+    # „other" ohne Link, der Vorgang läuft manuell. Ohne Protest leer.
     def protests_hash(game)
       by_party = game.game_protests.index_by(&:party)
       parties = (Array(game.protest_parties) | by_party.keys)
                 .sort_by { |party| Game::PROTEST_PARTIES.index(party) || 99 }
       return [] if parties.empty?
 
-      parties.map do |party|
-        protest = by_party[party]
-        {
-          party:,
-          label: game.protest_party_label(party),
-          selected: Array(game.protest_parties).include?(party),
-          manual: party == 'other',
-          invited_at: protest&.invited_at,
-          recipient_count: protest&.recipients&.size,
-          submitted_at: protest&.submitted_at,
-          filename: protest&.file&.attached? ? protest.file.filename.to_s : nil
-        }
-      end
+      parties.map { |party| GameProtest.overview_row(game, party, by_party[party]) }
     end
 
     def proceeding_proposal_hash(game)

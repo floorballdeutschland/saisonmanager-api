@@ -52,6 +52,68 @@ module Admin
       assert_response :not_found
     end
 
+    test 'die SBK schickt den Link an eine eingegebene Adresse, der alte wird ungültig' do
+      referees = @game.game_protests.find_by(party: 'referees')
+      old_digest = referees.token_digest
+      login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+      assert_enqueued_emails 1 do
+        post "/api/v2/admin/games/#{@game.id}/protests/referees/resend", params: { email: 'schiri@example.de' },
+                                                                          as: :json
+      end
+
+      assert_response :success
+      assert_equal 1, response.parsed_body['recipient_count']
+      referees.reload
+      assert_equal ['schiri@example.de'], referees.recipients
+      assert_not_equal old_digest, referees.token_digest
+    end
+
+    test 'ohne Adresse und ohne Eingabe sagt die Absage, was fehlt' do
+      login(create(:user, :admin))
+      post "/api/v2/admin/games/#{@game.id}/protests/referees/resend", as: :json
+
+      assert_response :unprocessable_entity
+      assert_includes response.parsed_body['message'], 'keine Adresse hinterlegt'
+    end
+
+    test 'eine ungültige Adresse wird abgelehnt' do
+      login(create(:user, :admin))
+      post "/api/v2/admin/games/#{@game.id}/protests/referees/resend", params: { email: 'keine-adresse' }, as: :json
+
+      assert_response :unprocessable_entity
+      assert_includes response.parsed_body['message'], 'gültige E-Mail-Adresse'
+    end
+
+    test 'ohne Eingabe geht der Link an die inzwischen hinterlegte Adresse' do
+      @game.game_day.club.update!(contact_email: 'neu@example.de')
+      host_team = @game.home_team
+      assert_equal @game.game_day.club_id, host_team.club_id
+      home, = GameProtest.create_with_token!(game: @game, party: 'home', recipients: [])
+      login(create(:user, :admin))
+
+      assert_enqueued_emails 1 do
+        post "/api/v2/admin/games/#{@game.id}/protests/home/resend", as: :json
+      end
+      assert_includes home.reload.recipients, 'neu@example.de'
+    end
+
+    test 'nach dem Upload gibt es keinen neuen Link' do
+      login(create(:user, :admin))
+      post "/api/v2/admin/games/#{@game.id}/protests/guest/resend", params: { email: 'x@example.de' }, as: :json
+
+      assert_response :unprocessable_entity
+      assert_includes response.parsed_body['message'], 'bereits hochgeladen'
+    end
+
+    test 'eine fremde SBK darf keinen Link verschicken' do
+      other = create(:game_operation, state_association_id: create(:state_association).id)
+      login(create(:user, :sbk_scoped, game_operation_id: other.id))
+      post "/api/v2/admin/games/#{@game.id}/protests/referees/resend", params: { email: 'x@example.de' }, as: :json
+
+      assert_response :forbidden
+    end
+
     test 'die Übersicht nennt jede Partei mit Stand' do
       login(create(:user, :sbk_scoped, game_operation_id: @go.id))
       get '/api/v2/admin/game_days/report_overview'
