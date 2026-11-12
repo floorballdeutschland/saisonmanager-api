@@ -164,6 +164,10 @@ class Game < ApplicationRecord
     'referee2_signed' => 'Schiedsrichter 2'
   }.freeze
 
+  # Mindestlänge der Beschreibung eines besonderen Ereignisses, siehe
+  # #special_event_description_missing?. Das Frontend prüft dieselbe Zahl.
+  SPECIAL_EVENT_DESCRIPTION_MIN_LENGTH = 50
+
   # Die fehlenden Unterschriften als Spaltennamen, leer wenn nichts fehlt.
   # Eine Regel für beide Stellen: die Sperre beim Abschließen des Berichts
   # (GamesController#set_game_status) und den Hinweis „Unterschriften fehlen"
@@ -535,8 +539,12 @@ class Game < ApplicationRecord
   # Verlangt das Spiel ein Berichtsformular der Schiris? Unabhängig vom
   # Schalter des Landesverbands; der entscheidet erst über Erinnerung und
   # Versand (#report_form_recipient).
+  #
+  # Ein besonderes Ereignis verlangt seit 11.11.2026 kein Berichtsformular
+  # mehr. Es wird stattdessen im Spielbericht selbst beschrieben, siehe
+  # #special_event_description_missing?.
   def report_form_required?
-    match_penalty? || technical_match_penalty? || special_event? || false
+    match_penalty? || technical_match_penalty? || false
   end
 
   # Gründe, aus denen ein Berichtsformular verlangt ist, in fester Reihenfolge.
@@ -544,14 +552,49 @@ class Game < ApplicationRecord
     reasons = []
     reasons << :match_penalty if match_penalty?
     reasons << :technical_match_penalty if technical_match_penalty?
-    reasons << :special_event if special_event?
     reasons
+  end
+
+  # Ist ein besonderes Ereignis angehakt, muss es im Spielbericht mit
+  # mindestens SPECIAL_EVENT_DESCRIPTION_MIN_LENGTH Zeichen beschrieben sein,
+  # bevor der Bericht abgeschlossen werden kann. Leerraum am Rand zählt nicht.
+  def special_event_description_missing?
+    return false unless special_event?
+
+    special_event_description_length < SPECIAL_EVENT_DESCRIPTION_MIN_LENGTH
+  end
+
+  # Absage beim Abschluss (GamesController#set_game_status), oder nil. Sie
+  # unterscheidet leer und zu kurz und nennt im zweiten Fall die Zahlen:
+  # „mindestens 50 Zeichen" allein liest sich bei 47 getippten wie ein Fehler
+  # der Maske.
+  def special_event_description_error
+    return nil unless special_event_description_missing?
+
+    min = SPECIAL_EVENT_DESCRIPTION_MIN_LENGTH
+    length = special_event_description_length
+    if length.zero?
+      'Der Spielbericht kann nicht abgeschlossen werden: Es ist ein besonderes Ereignis angehakt, ' \
+        'aber noch nicht beschrieben. Beschreibe es unter „Sonstige Ereignisse“ im Feld ' \
+        "„Besonderes Ereignis“. Nötig sind mindestens #{min} Zeichen."
+    else
+      'Der Spielbericht kann nicht abgeschlossen werden: Die Beschreibung des besonderen Ereignisses ' \
+        "ist mit #{length} Zeichen zu kurz, nötig sind mindestens #{min} (es fehlen noch #{min - length}). " \
+        'Ergänze unter „Sonstige Ereignisse“ im Feld „Besonderes Ereignis“, was passiert ist.'
+    end
+  end
+
+  # Zählt wie das Frontend (special-event-description.ts): Unicode-Leerraum
+  # am Rand weg, dann Zeichen. `String#strip` ließe ein geschütztes Leerzeichen
+  # stehen, das JavaScripts `trim` entfernt.
+  def special_event_description_length
+    special_event_string.to_s.gsub(/\A[[:space:]]+|[[:space:]]+\z/, '').length
   end
 
   # Wohin das hochgeladene Berichtsformular geht:
   #
   #   'vsk'          volle Matchstrafe (VSK-Verfahren)
-  #   'sbk'          technische Matchstrafe oder besonderes Ereignis, zur Kenntnis
+  #   'sbk'          technische Matchstrafe, zur Kenntnis
   #   'vsk_and_sbk'  beides, je eine eigene Mail
   #
   # Im manuellen Modus geht alles an die SBK: Sie leitet ein VSK-Verfahren
@@ -561,8 +604,7 @@ class Game < ApplicationRecord
     return nil unless report_form_workflow_enabled? && report_form_required?
     return 'sbk' if state_association.effective_manual_proceeding_creation
 
-    sbk_case = technical_match_penalty? || special_event?
-    return 'vsk_and_sbk' if match_penalty? && sbk_case
+    return 'vsk_and_sbk' if match_penalty? && technical_match_penalty?
 
     match_penalty? ? 'vsk' : 'sbk'
   end

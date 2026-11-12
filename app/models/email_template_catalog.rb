@@ -520,7 +520,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         # @upload_url und @deadline.
         { key: 'upload_url', description: 'Adresse der Spielseite mit dem Upload des Berichtsformulars' },
         { key: 'deadline', description: 'Frist für die Abgabe (Datum und Uhrzeit)' },
-        { key: 'report_reasons', description: 'Anlass des Berichts, z. B. „eine Matchstrafe und ein besonderes Ereignis“' },
+        { key: 'report_reasons', description: 'Anlass des Berichts, z. B. „eine Matchstrafe und eine technische Matchstrafe“' },
         { key: 'report_recipient', description: 'Wohin der Bericht nach dem Upload geht, z. B. „die zuständige VSK“' }
       ]
     },

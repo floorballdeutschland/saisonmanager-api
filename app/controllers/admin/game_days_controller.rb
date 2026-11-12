@@ -411,7 +411,7 @@ module Admin
       # aussteht, wären sie zwangsläufig alle gesetzt – die halbe Restsaison
       # trüge dann eine Auffälligkeit, und die Markierung verlöre ihren Wert.
       #
-      # Die übrigen Flags bleiben unberührt: protest, forfait,
+      # Die übrigen Flags bleiben unberührt: protest, forfait, special_event,
       # special_event_string und Strafen kann nur setzen, wer den Bericht
       # führt, ein ausstehendes Spiel trägt sie also ohnehin nicht.
       pending = upcoming?(game)
@@ -419,6 +419,10 @@ module Admin
       {
         protest: game.protest || false,
         forfait: game.forfait.to_i.positive?,
+        # Der Haken für sich: Er kann ohne Beschreibung gesetzt sein, wenn die
+        # SBK den Bericht trotz fehlender Beschreibung abgeschlossen hat oder
+        # bei Altbeständen. Die Übersicht soll beides zeigen.
+        special_event: game.special_event || false,
         special_event_string: game.special_event_string.presence,
         severe_penalty_count: severe_penalty_count(game),
         # nil? statt blank?: 0 Zuschauer ist eine gültige Angabe, aber `0.blank?`

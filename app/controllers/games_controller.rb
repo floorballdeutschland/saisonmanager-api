@@ -1091,6 +1091,11 @@ class GamesController < ApplicationController
           signatures_error = _signatures_incomplete_error(game) unless sbk
           return render json: { message: signatures_error }, status: :unprocessable_entity if signatures_error
 
+          # Wie bei den Unterschriften nicht für Admin und SBK: Sie schließen
+          # auch alte Berichte ab und sollen kein fremdes Ereignis nacherzählen.
+          special_event_error = game.special_event_description_error unless sbk
+          return render json: { message: special_event_error }, status: :unprocessable_entity if special_event_error
+
           protest_error = game.protest_parties_error unless sbk
           return render json: { message: protest_error }, status: :unprocessable_entity if protest_error
 
