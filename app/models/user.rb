@@ -174,6 +174,44 @@ class User < ApplicationRecord
     Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::EHOSTUNREACH, OpenSSL::SSL::SSLError
   ].freeze
 
+  # --- Links zum (erstmaligen) Setzen des Passworts ------------------------
+  # In der Datenbank steht nur der SHA256-Digest des Tokens und ein
+  # Ablaufzeitpunkt, der Klartext existiert nur im Link der Mail. Bis 2.8.0
+  # lag das Token im Klartext und lief nie ab; wer die Datenbank lesen konnte,
+  # hätte damit jedes Konto mit offenem Link übernehmen können.
+  #
+  # „Passwort vergessen" und der Versand aus der Verwaltung gelten 24 Stunden.
+  # Einladungen für neu angelegte Konten (Schiedsrichter-Massenanlage,
+  # Kursleitung) gelten länger, weil sie oft erst Tage später geöffnet werden.
+  PASSWORD_RESET_VALIDITY = 24.hours
+  ACCOUNT_INVITATION_VALIDITY = 14.days
+
+  # Setzt Digest und Ablauf (ohne zu speichern) und liefert das Token im
+  # Klartext für den Link zurück. Ein neues Token macht ein älteres ungültig.
+  def issue_password_reset_token(valid_for: PASSWORD_RESET_VALIDITY)
+    raw_token = SecureRandom.urlsafe_base64(32)
+    self.password_reset_token_digest = Digest::SHA256.hexdigest(raw_token)
+    self.password_reset_expires_at = valid_for.from_now
+    raw_token
+  end
+
+  def clear_password_reset_token
+    self.password_reset_token_digest = nil
+    self.password_reset_expires_at = nil
+  end
+
+  # Konto zu einem Link, solange er gilt. Leere Tokens dürfen nie zu einem
+  # Vergleich mit NULL werden (sonst träfe es das erste Konto ohne Token), und
+  # archivierte Konten setzen kein Passwort mehr.
+  def self.find_by_password_reset_token(token)
+    token = token.to_s
+    return nil if token.blank?
+
+    not_archived
+      .where('password_reset_expires_at > ?', Time.current)
+      .find_by(password_reset_token_digest: Digest::SHA256.hexdigest(token))
+  end
+
   # Setzt ein frisches Reset-Token und verschickt den Link. Liefert zurück, ob
   # die Mail vom Mailserver angenommen wurde.
   #
@@ -194,11 +232,11 @@ class User < ApplicationRecord
   # Das save steht ausserhalb des rescue: Ein Schreibfehler ist ein
   # Datenbankproblem und darf nicht als Mailproblem gemeldet werden.
   def send_reset_information
-    self.password_reset_token = SecureRandom.uuid
+    token = issue_password_reset_token
     return false unless save(validate: false)
 
     begin
-      UserMailer.reset_password(self).deliver_now
+      UserMailer.reset_password(self, token).deliver_now
       true
     rescue *MAIL_TRANSPORT_ERRORS => e
       Rails.logger.error(
@@ -304,10 +342,10 @@ class User < ApplicationRecord
   # Timeout, und der Abbruch träfe die Konten, die dann schon angelegt sind.
   # Liefert zurück, ob die Mail auf den Weg gebracht wurde.
   def send_referee_account_information(deliver_later: false)
-    self.password_reset_token = SecureRandom.uuid
+    token = issue_password_reset_token(valid_for: ACCOUNT_INVITATION_VALIDITY)
     return false unless save(validate: false)
 
-    mail = UserMailer.referee_account_created(self)
+    mail = UserMailer.referee_account_created(self, token)
     deliver_later ? mail.deliver_later : mail.deliver_now
     true
   end

@@ -37,7 +37,8 @@ class RefereeCourseLeadsTest < ActionDispatch::IntegrationTest
     assert_equal 'kl-mueller', user.user_name
     assert_equal 'joerg@example.org', user.email
     assert lead_role?(user)
-    assert user.password_reset_token.present?
+    assert user.password_reset_token_digest.present?
+    assert_in_delta User::ACCOUNT_INVITATION_VALIDITY.from_now, user.password_reset_expires_at, 5.seconds
   end
 
   test 'Schiri mit Konto bekommt die Rolle zusaetzlich, ohne Einladung' do
@@ -152,8 +153,8 @@ class RefereeCourseLeadsTest < ActionDispatch::IntegrationTest
   end
 
   test 'Einladungsmail nennt Kurs und Benutzernamen' do
-    user = create(:user, first_name: 'Jörg', user_name: 'kl-mueller', password_reset_token: 'tok')
-    mail = UserMailer.course_lead_invited(user, @course)
+    user = create(:user, first_name: 'Jörg', user_name: 'kl-mueller')
+    mail = UserMailer.course_lead_invited(user, @course, 'tok')
     assert_equal ['rsk@lv.example'], mail.reply_to
     assert_match 'G-Kurs Kassel', mail.subject
     assert_match 'kl-mueller', mail.body.encoded
