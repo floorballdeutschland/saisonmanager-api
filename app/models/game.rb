@@ -218,6 +218,16 @@ class Game < ApplicationRecord
     protest? && Array(protest_parties).empty?
   end
 
+  # Absage beim Abschluss (GamesController#set_game_status), oder nil. Wie bei
+  # den Unterschriften nicht für Admin und SBK.
+  def protest_parties_error
+    return nil unless protest_parties_missing?
+
+    'Der Spielbericht kann nicht abgeschlossen werden: Es ist ein Protest angehakt, aber keine ' \
+      'Protestpartei ausgewählt. Wähle unter „Sonstige Ereignisse“ aus, wer Protest eingelegt hat ' \
+      '(bei einer Partei, die nicht aufgeführt ist, „Andere“).'
+  end
+
   # Im Tabletmodus erfasst? Davon hängt ab, ob die öffentliche Spielseite die
   # ausführliche Statistik und die Highlights zeigt, nicht von einer
   # Einstellung (fe#344).

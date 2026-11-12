@@ -947,7 +947,7 @@ class GamesController < ApplicationController
         # Ist der Bericht schon abgeschlossen, geht der Link einer ergänzten
         # Partei sofort raus; sonst erst beim Abschluss. Läuft bei jedem
         # Speichern eines Flags, ist aber je Partei idempotent.
-        _send_protest_invitations(game) if game.match_record_closed?
+        GameProtestInviter.call_safely(game) if game.match_record_closed?
         render json: game.events
       else
         render json: { message: game.errors }, status: :unprocessable_entity
@@ -1091,7 +1091,7 @@ class GamesController < ApplicationController
           signatures_error = _signatures_incomplete_error(game) unless sbk
           return render json: { message: signatures_error }, status: :unprocessable_entity if signatures_error
 
-          protest_error = _protest_parties_error(game) unless sbk
+          protest_error = game.protest_parties_error unless sbk
           return render json: { message: protest_error }, status: :unprocessable_entity if protest_error
 
           checklist_error = _checklist_incomplete_error(game)
@@ -1115,7 +1115,7 @@ class GamesController < ApplicationController
 
         # Links an die Protestparteien auch bei direktem `finalized` (die SBK
         # überspringt den Abschluss), sonst ginge dann nie einer raus.
-        _send_protest_invitations(game) if %w[match_record_closed finalized].include?(params[:game_status])
+        GameProtestInviter.call_safely(game) if %w[match_record_closed finalized].include?(params[:game_status])
 
         if params[:game_status] == 'match_record_closed'
           _maybe_send_incident_report_reminder(game)
@@ -1230,24 +1230,6 @@ class GamesController < ApplicationController
     'Auf dem Spielbericht fehlen noch Unterschriften: ' \
       "#{missing.join(', ')}. Erst wenn alle Unterschriften abgehakt sind, " \
       'kann der Spielbericht abgeschlossen werden.'
-  end
-
-  # Wie bei den Unterschriften nicht für Admin und SBK.
-  def _protest_parties_error(game)
-    return nil unless game.protest_parties_missing?
-
-    'Der Spielbericht kann nicht abgeschlossen werden: Es ist ein Protest angehakt, aber keine ' \
-      'Protestpartei ausgewählt. Wähle unter „Sonstige Ereignisse“ aus, wer Protest eingelegt hat ' \
-      '(bei einer Partei, die nicht aufgeführt ist, „Andere“).'
-  end
-
-  # Eine Nebenwirkung des Abschlusses, nicht Teil davon: Der Bericht ist schon
-  # gespeichert, ein Fehler hier darf nicht als Serverfehler zurückkommen.
-  def _send_protest_invitations(game)
-    GameProtestInviter.new(game).call
-  rescue StandardError => e
-    Rails.logger.error("GameProtestInviter fehlgeschlagen (Spiel #{game.id}): #{e.class}: #{e.message}")
-    Sentry.capture_exception(e) if defined?(Sentry)
   end
 
   def _checklist_incomplete_error(game)
