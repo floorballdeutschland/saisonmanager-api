@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Ruby 3.4.12 statt 3.2.4** (#884): Ruby 3.2 erhält seit März 2026 keine Sicherheitsupdates mehr, und für Ubuntu 26.04 gibt es in der CI kein 3.2.4. Basis-Image `ruby:3.4.12-bookworm` (libvips bleibt 8.14), Bundler 2.6.9 statt 2.3.7, `csv` als eigener Gem-Eintrag, weil Ruby 3.4 es nicht mehr als Standardbibliothek mitliefert. Die CI läuft wieder auf `ubuntu-latest`. Keine Migration. Nach dem Deploy auf .dev gezielt prüfen: CSV-/XLSX-Exporte (Lizenzabrechnung, Lizenzliste, SR-Listen), Bild-Uploads und -Varianten, Mailversand, Rake-Tasks.
+
 ## [2.7.0] - 2026-11-11
 
 ### Neu

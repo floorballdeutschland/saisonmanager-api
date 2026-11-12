@@ -7,6 +7,8 @@ end
 
 # Bundle edge Rails instead: gem 'rails', github: 'rails/rails'
 gem 'rails', '~> 7.2.0'
+# Ruby 3.4 liefert csv nicht mehr als Standardbibliothek (bundled gem).
+gem 'csv'
 # Use postgresql as the database for Active Record
 gem 'pg', '~> 1.5'
 # Use Puma as the app server
