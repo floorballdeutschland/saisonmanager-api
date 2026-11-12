@@ -20,6 +20,17 @@
 # Ohne Adresse wird der Protest trotzdem angelegt (recipients leer). Die SBK
 # sieht in der Arbeitsansicht, dass kein Link zugestellt werden konnte.
 class GameProtestInviter
+  # Für Aufrufer, deren eigentliche Arbeit schon gespeichert ist (Abschluss
+  # des Berichts, Speichern der Flags): Ein Fehler hier darf nicht als
+  # Serverfehler zurückkommen.
+  def self.call_safely(game)
+    new(game).call
+  rescue StandardError => e
+    Rails.logger.error("GameProtestInviter fehlgeschlagen (Spiel #{game.id}): #{e.class}: #{e.message}")
+    Sentry.capture_exception(e) if defined?(Sentry)
+    0
+  end
+
   def initialize(game)
     @game = game
   end
