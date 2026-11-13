@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [2.8.1] - 2026-11-13
+
 ### Behoben
 
 - **Lizenzlisten geben Gegnern keine Spielerstammdaten mehr heraus**: Die Liga-Lizenzliste (`GET user/leagues/:id/licenses`) dürfen alle Vereine und Teams einer Liga abrufen, also auch für die Kader der Gegner. Sie lieferte je Spieler den vollständigen Datensatz der Spielerverwaltung, darunter Geburtsdatum, E-Mail-Adresse, Vereinshistorie, Gründe für Deaktivierung und Namensverbergung sowie die Lizenzhistorie mit Bearbeitern und Begründungen, bei Sperren auch deren Begründung. Jetzt enthält jede Zeile nur noch, was die Liste anzeigt: Name, Lizenzstatus, Erst-/Zweitlizenz, Antrags-, Erteilungs- und Freigabedatum sowie Geltungsbereich und Dauer einer Sperre. Für das Symbol für Minderjährige kommt statt des Geburtsdatums `adult_on` (der 18. Geburtstag), und das nur, solange er höchstens ein Jahr zurückliegt; so stimmt das Symbol auch für vergangene Spieltage der Saison. Dieselbe Lücke hatte die Mannschafts-Lizenzliste (`GET user/team/:id/licenses`): Das volle Lizenzwesen samt Vereinsspielern ohne Lizenz bekommen jetzt nur noch Admin, SBK, der VM des Vereins und der TM der Mannschaft; Gegner und ausrichtende Vereine erhalten die Kaderliste des Aufstellungsdialogs, wie beim Spielsekretariats-Link. Admin und SBK sehen die vollständigen Ligadaten weiter über `admin/leagues/:id/licenses`. Das Frontend (fe#660) liest `adult_on` und fällt bei der alten API auf das Geburtsdatum zurück.
