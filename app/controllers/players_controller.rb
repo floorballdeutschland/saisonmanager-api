@@ -627,7 +627,7 @@ class PlayersController < ApplicationController
               (ph[:tm].present? && ph[:tm].intersection(teams.map(&:id)).present?)
 
     if allowed
-      render json: league.licenses(true)
+      render json: user_license_list(league.licenses(true))
     else
       render json: { message: 'Keine Berechtigung!' }, status: :forbidden
     end
@@ -1421,6 +1421,56 @@ class PlayersController < ApplicationController
   end
 
   private
+
+  # Die Lizenzliste einer Liga sehen alle Vereine und Teams der Liga, also
+  # auch die Kader der Gegner. Bis api#906 bekam jede Zeile den vollen
+  # Player#full_hash der Spielerverwaltung: Geburtsdatum, E-Mail, Vereins-
+  # historie, Deaktivierungs- und Namensverbergungsgrund, die ganze Lizenz-
+  # historie samt Bearbeitern und Begruendungen, dazu die Begruendung einer
+  # Sperre. Hier steht deshalb eine feste Liste genau der Felder, die
+  # license-user-league-detail liest; alles andere faellt weg, auch was
+  # build_license_items kuenftig ergaenzt. Admin und SBK haben fuer die volle
+  # Sicht admin/leagues/:id/licenses.
+  def user_license_list(teams, today: Time.find_zone('Europe/Berlin').today)
+    teams.map do |team|
+      team.merge(players: team[:players].map { |player| user_license_list_player(player, today) })
+    end
+  end
+
+  def user_license_list_player(player, today)
+    team_license = player.fetch(:team_license)
+    {
+      id: player[:id],
+      first_name: player[:first_name],
+      last_name: player[:last_name],
+      adult_on: adult_on(player[:birthdate], today),
+      team_license: {
+        license: { gf_role: team_license[:license]['gf_role'] },
+        last_status_id: team_license[:last_status_id],
+        last_status_code: team_license[:last_status_code],
+        approved_at: team_license[:approved_at],
+        requested_at: team_license[:requested_at],
+        released_at: team_license[:released_at],
+        suspension: team_license[:suspension]&.slice(:scope_summary, :valid_until, :games_total, :remaining_games)
+      }
+    }
+  end
+
+  # Fuer das Minderjaehrigen-Symbol am gewaehlten Spieltag statt des
+  # Geburtsdatums: der 18. Geburtstag. Mitgeliefert, solange er hoechstens ein
+  # Jahr zurueckliegt, damit auch ein vergangener Spieltag der laufenden Saison
+  # richtig markiert wird; aeltere Volljaehrige liefern kein Datum. `nil` heisst
+  # also "seit ueber einem Jahr volljaehrig oder Geburtsdatum unbekannt", beides
+  # ohne Symbol, wie bisher die currentAge-Pipe ohne Geburtsdatum.
+  def adult_on(birthdate, today)
+    return nil if birthdate.blank?
+
+    eighteenth = birthdate.to_date.advance(years: 18)
+    # Am 29.02. Geborene: advance landet im Nicht-Schaltjahr auf dem 28.02., die
+    # Altersrechnung im Frontend (currentAge) zaehlt erst ab dem 01.03.
+    eighteenth += 1 if birthdate.month == 2 && birthdate.day == 29 && eighteenth.day == 28
+    eighteenth if eighteenth > today.prev_year
+  end
 
   # Der History-Eintrag fuer handle_license_request, ausgelagert wegen
   # Metrics/CyclomaticComplexity. EXPRESS_WAIVED_KEY setzt erst der
