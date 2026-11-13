@@ -45,8 +45,8 @@ class PlayersUserLicensesTest < ActionDispatch::IntegrationTest
     assert_equal 2, players.size
     players.each do |p|
       assert_empty p.keys - ALLOWED_PLAYER_KEYS, "unerwartete Felder: #{p.keys - ALLOWED_PLAYER_KEYS}"
-      assert_empty p['team_license'].keys - %w[license last_status_id last_status_code base_status_id
-                                               approved_at requested_at released_at female_overage suspension]
+      assert_empty p['team_license'].keys - %w[license last_status_id last_status_code
+                                               approved_at requested_at released_at suspension]
       assert_equal ['gf_role'], p['team_license']['license'].keys
     end
 
@@ -83,6 +83,78 @@ class PlayersUserLicensesTest < ActionDispatch::IntegrationTest
 
     minor = players_of(JSON.parse(response.body), @other_team).find { |p| p['id'] == @minor.id }
     assert_equal '2030-03-01', minor['adult_on']
+  end
+
+  test 'eigene Mannschaft bekommt dieselbe Feldliste' do
+    create(:player, email: 'eigen@example.org', with_licenses: [{ team: @own_team }])
+    login_as(@vm)
+    get "/api/v2/user/leagues/#{@league.id}/licenses.json"
+
+    players = JSON.parse(response.body).flat_map { |t| t['players'] }
+    assert_equal 3, players.size
+    players.each { |p| assert_empty p.keys - ALLOWED_PLAYER_KEYS }
+    assert_not_includes response.body, 'eigen@example.org'
+  end
+
+  test 'TM eines Teams der Liga sieht die Liste, ebenfalls gekuerzt' do
+    login_as(create(:user, :tm, team_id: @own_team.id))
+    get "/api/v2/user/leagues/#{@league.id}/licenses.json"
+
+    assert_response :success
+    players_of(JSON.parse(response.body), @other_team).each { |p| assert_empty p.keys - ALLOWED_PLAYER_KEYS }
+    assert_not_includes response.body, 'erwachsen@example.org'
+  end
+
+  test 'Sperre zeigt Geltungsbereich und Spiele, aber keine Begruendung' do
+    @adult.suspend!(user_id: create(:user).id, team_id: @other_team.id, games_total: 3,
+                    reason: 'Taetlichkeit gegen SR XY')
+    login_as(@vm)
+    get "/api/v2/user/leagues/#{@league.id}/licenses.json"
+
+    row = players_of(JSON.parse(response.body), @other_team).find { |p| p['id'] == @adult.id }
+    suspension = row['team_license']['suspension']
+    assert_equal %w[games_total remaining_games scope_summary valid_until], suspension.keys.sort
+    assert_equal 3, suspension['games_total']
+    assert_equal 3, suspension['remaining_games']
+    assert_predicate suspension['scope_summary'], :present?
+    assert_equal License::SUSPENDED, row['team_license']['last_status_id']
+    assert_not_includes response.body, 'Taetlichkeit'
+  end
+
+  test 'ohne Geburtsdatum kein adult_on und kein Fehler' do
+    @minor.update_column(:birthdate, nil)
+    login_as(@vm)
+    get "/api/v2/user/leagues/#{@league.id}/licenses.json"
+
+    assert_response :success
+    assert_nil players_of(JSON.parse(response.body), @other_team).find { |p| p['id'] == @minor.id }['adult_on']
+  end
+
+  test 'adult_on reicht ein Jahr zurueck, fuer vergangene Spieltage' do
+    # 18 geworden am 10.11.2026, drei Tage vor heute: noch mit Datum.
+    @minor.update!(birthdate: '2008-11-10')
+    # 18 geworden am 12.11.2025, ein Jahr und einen Tag vor heute: ohne.
+    @adult.update!(birthdate: '2007-11-12')
+    travel_to Time.zone.parse('2026-11-13 12:00') do
+      login_as(@vm)
+      get "/api/v2/user/leagues/#{@league.id}/licenses.json"
+    end
+
+    by_id = players_of(JSON.parse(response.body), @other_team).index_by { |p| p['id'] }
+    assert_equal '2026-11-10', by_id.fetch(@minor.id)['adult_on']
+    assert_nil by_id.fetch(@adult.id)['adult_on']
+  end
+
+  test 'heute zaehlt in Berliner Zeit' do
+    # 18. Geburtstag am 13.11.2025; 23:30 UTC am 12.11.2026 ist in Berlin schon
+    # der 13.11., der Geburtstag liegt damit genau ein Jahr zurueck: ohne Datum.
+    @minor.update!(birthdate: '2007-11-13')
+    travel_to Time.utc(2026, 11, 12, 23, 30) do
+      login_as(@vm)
+      get "/api/v2/user/leagues/#{@league.id}/licenses.json"
+    end
+
+    assert_nil players_of(JSON.parse(response.body), @other_team).find { |p| p['id'] == @minor.id }['adult_on']
   end
 
   test 'ohne Beteiligung an der Liga bleibt es bei 403' do
