@@ -148,6 +148,57 @@ module Admin
       assert_response :created
     end
 
+    # Bis 11/2026 uebernahm der Controller secondary_player_id fuer jede
+    # Antragsart, prueft den Verein des Zweitprofils aber nur beim Merge. Die
+    # Antwort enthielt dann Name und Geburtsdatum eines beliebigen Spielers.
+    test 'ohne Merge wird kein Zweitprofil gespeichert und keins ausgeliefert' do
+      foreign = create(:player, birthdate: '2012-03-04',
+                                clubs: [{ 'club_id' => @other_club.id, 'home_club' => true }])
+      login(@vm)
+
+      %w[names_swapped first_name birthdate].each do |type|
+        extra = type == 'names_swapped' ? {} : { new_value: type == 'birthdate' ? '2000-01-01' : 'Neu' }
+        post '/api/v2/admin/player_change_requests.json',
+             params: { player_id: @master.id, club_id: @club.id, correction_type: type,
+                        secondary_player_id: foreign.id }.merge(extra)
+
+        assert_response :created, type
+        body = JSON.parse(response.body)
+        assert_nil body['secondary_player'], "#{type} darf kein Zweitprofil ausliefern"
+        assert_not_includes response.body, foreign.last_name
+        assert_nil PlayerChangeRequest.find(body['id']).secondary_player_id
+      end
+    end
+
+    test 'Altbestand mit Zweitprofil gibt es in der Liste nicht heraus und bleibt bearbeitbar' do
+      foreign = create(:player, clubs: [{ 'club_id' => @other_club.id, 'home_club' => true }])
+      legacy = PlayerChangeRequest.new(player: @master, club_id: @club.id, correction_type: 'names_swapped',
+                                       status: 'pending', secondary_player_id: foreign.id,
+                                       requested_by_user_id: @vm.id)
+      legacy.save!(validate: false)
+
+      login(@vm)
+      get '/api/v2/admin/player_change_requests.json', params: { club_id: @club.id }
+
+      assert_response :success
+      assert_not_includes response.body, foreign.last_name
+
+      login(@admin)
+      patch "/api/v2/admin/player_change_requests/#{legacy.id}/reject.json",
+            params: { rejection_reason: 'Altbestand' }
+
+      assert_response :success
+      assert_equal 'rejected', legacy.reload.status
+    end
+
+    test 'das Modell lehnt ein Zweitprofil ausserhalb des Merge ab' do
+      request = PlayerChangeRequest.new(player: @master, club_id: @club.id, correction_type: 'names_swapped',
+                                        status: 'pending', secondary_player: @duplicate)
+
+      assert_not request.valid?
+      assert request.errors.key?(:secondary_player_id)
+    end
+
     # Der zweite Teil des Befunds: Der Guard griff nur bei 'merge'. Gegen die
     # übrigen sechs Antragsarten ließ sich ein Antrag zu jeder beliebigen
     # Spieler-ID stellen.

@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Korrekturantrag gab Stammdaten fremder Spieler heraus**: `POST admin/player_change_requests` übernahm `secondary_player_id` für jede Antragsart, geprüft wurde der Verein des Zweitprofils aber nur beim Zusammenführen. Ein Vereinsmanager konnte so mit „Vor- und Nachname vertauscht“ und einer beliebigen Spieler-ID Name und Geburtsdatum jedes Spielers im System abrufen, ohne dass der Betroffene davon erfuhr. Das Zweitprofil wird jetzt nur beim Zusammenführen gespeichert und ausgeliefert; das Modell lehnt es bei anderen Antragsarten ab. Bestehende Anträge mit Zweitprofil zeigen es in der Liste nicht mehr und bleiben bearbeitbar.
+
 ## [2.8.1] - 2026-11-13
 
 ### Behoben
