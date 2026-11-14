@@ -9,6 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Anmeldung gegen Passwortraten gedrosselt**: Für `POST login` gab es bisher keinerlei Grenze, Passwörter ließen sich also unbegrenzt durchprobieren. Jetzt gelten zwei Grenzen. Je IP höchstens 30 Anmeldeversuche in fünf Minuten (Rack::Attack `login/ip`, gilt für `/api/v2/login` und das alte `/login`, auch mit Endung wie `login.json`). Je Benutzername sperren zehn Fehlversuche das Konto für 15 Minuten, unabhängig von der IP und auch für das richtige Passwort; eine gelungene Anmeldung setzt den Zähler zurück. Unbekannte Namen zählen genauso, damit die Antwort nicht verrät, ob es ein Konto gibt. Antwort jeweils 429 mit Hinweis auf „Passwort vergessen“.
+- **Mail-Drosseln ließen sich mit einer Endung umgehen**: Die IP-Grenzen für „Passwort vergessen“, „Benutzername vergessen“ und den Antrag auf einen API-Zugang verglichen den Pfad exakt, `lost_password.json` lief ungezählt durch. Sie prüfen jetzt ein Muster, das Endung und Schrägstriche abdeckt.
+
 ## [2.8.1] - 2026-11-13
 
 ### Behoben

@@ -30,12 +30,35 @@ class SessionsController < ApplicationController
   # Kombination gar nicht erst startet.
   FORGOT_USERNAME_INTERVAL = 5.minutes
 
+  # Fehlversuche je Benutzername, unabhaengig von der IP. Der IP-Topf
+  # 'login/ip' in config/initializers/rack_attack.rb laesst sich mit
+  # wechselnden Adressen umgehen, dieser Zaehler haengt am Konto. Nach
+  # LOGIN_FAILURE_LIMIT Fehlversuchen nimmt das Konto bis zum Ende des Fensters
+  # keine Anmeldung mehr an, auch nicht mit dem richtigen Passwort: Sonst
+  # verriete die Antwort, wann das Raten getroffen hat. Eine gelungene Anmeldung
+  # setzt den Zaehler zurueck.
+  #
+  # Gezaehlt wird auch fuer unbekannte Namen, damit die Antwort nicht verraet,
+  # ob es ein Konto gibt. Der Zaehler liegt wie FORGOT_USERNAME_INTERVAL im
+  # geteilten Rails.cache. Der Preis: Wer einen Benutzernamen kennt, kann das
+  # Konto fuer LOGIN_FAILURE_WINDOW sperren. Das Fenster beginnt mit dem ersten
+  # Fehlversuch und wird nicht verlaengert.
+  LOGIN_FAILURE_LIMIT = 10
+  LOGIN_FAILURE_WINDOW = 15.minutes
+  LOGIN_LOCKED_MESSAGE = 'Zu viele fehlgeschlagene Anmeldeversuche. Bitte warte 15 Minuten ' \
+                         'oder setze dein Passwort über „Passwort vergessen“ zurück.'.freeze
+
   # POST /login
   def login
     username = params[:username].to_s.downcase
     password = params[:password]
 
+    if login_locked?(username)
+      return render json: { success: false, message: LOGIN_LOCKED_MESSAGE }, status: :too_many_requests
+    end
+
     user = User.login(username, password)
+    user ? reset_login_failures(username) : count_login_failure(username)
 
     if user&.archived?
       render json: { success: false, message: 'Dieses Benutzerkonto wurde archiviert.' }, status: :unauthorized
@@ -100,6 +123,26 @@ class SessionsController < ApplicationController
   end
 
   private
+
+  def login_failure_key(username)
+    "login-failures/#{Digest::SHA256.hexdigest(username)}"
+  end
+
+  def login_locked?(username)
+    return false if username.blank?
+
+    Rails.cache.read(login_failure_key(username), raw: true).to_i >= LOGIN_FAILURE_LIMIT
+  end
+
+  def count_login_failure(username)
+    return if username.blank?
+
+    Rails.cache.increment(login_failure_key(username), 1, expires_in: LOGIN_FAILURE_WINDOW)
+  end
+
+  def reset_login_failures(username)
+    Rails.cache.delete(login_failure_key(username))
+  end
 
   def reminder_throttled?(email)
     cache_key = "forgot_username/#{Digest::SHA256.hexdigest(email)}"
