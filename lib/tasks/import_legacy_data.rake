@@ -5,7 +5,7 @@
 # Imports clubs, players, and team-club assignments from the legacy API
 # at api.saisonmanager.de into the local DB.
 #
-# Prerequisites: set LEGACY_USER and LEGACY_PASS env vars, or use defaults.
+# Prerequisites: set LEGACY_USER and LEGACY_PASS env vars (no defaults).
 #
 # Run:
 #   bundle exec rails import:clubs     RAILS_ENV=production
@@ -20,8 +20,11 @@ namespace :import do
     require 'net/http'
     require 'json'
 
-    user = ENV.fetch('LEGACY_USER', 'mguenther')
-    pass = ENV.fetch('LEGACY_PASS', 'Guenni14-sbk')
+    # Keine Standardwerte: Bis 11/2026 standen hier Benutzername und Passwort
+    # eines echten Kontos als Default, im oeffentlichen Repository.
+    user = ENV['LEGACY_USER'].presence
+    pass = ENV['LEGACY_PASS'].presence
+    abort 'ERROR: LEGACY_USER und LEGACY_PASS setzen (keine Standardwerte).' unless user && pass
 
     uri  = URI("#{LEGACY_BASE}/login")
     http = Net::HTTP.new(uri.host, uri.port)

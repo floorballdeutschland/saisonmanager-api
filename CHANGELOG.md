@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Keine Zugangsdaten mehr als Standardwerte im Code**: Der Legacy-Import (`lib/tasks/import_legacy_data.rake`) trug Benutzername und Passwort eines echten Kontos als Default; er verlangt jetzt `LEGACY_USER` und `LEGACY_PASS` und bricht ohne sie ab. `staging:seed_demo_users` fiel ohne `STAGING_USER_PASSWORD` auf das öffentlich bekannte `staging-password` zurück und gab ohne `STAGING_ADMIN_PASSWORD` dem Admin-Demokonto das gemeinsame Passwort; beides bricht jetzt ab, und die Ausgabe nennt keine Passwörter mehr. `db/seeds.rb` (löscht die Settings, legt einen Admin mit `password123` an) verweigert den Lauf mit `RAILS_ENV=production`, was auch Staging einschließt.
+
 ## [2.8.1] - 2026-11-13
 
 ### Behoben

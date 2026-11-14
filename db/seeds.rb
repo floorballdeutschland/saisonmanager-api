@@ -1,5 +1,14 @@
 # frozen_string_literal: true
 
+# Die Seeds loeschen die Settings und legen Konten mit dem oeffentlich
+# bekannten Passwort 'password123' an, darunter einen Admin. Produktion und
+# Staging laufen beide mit RAILS_ENV=production; ein versehentliches
+# `rails db:seed` oder `db:setup` dort darf nichts tun.
+if Rails.env.production? && ENV['SEED_ALLOW_PRODUCTION'] != '1'
+  abort 'ABBRUCH: db/seeds.rb laeuft nicht mit RAILS_ENV=production ' \
+        '(lokal mit SEED_ALLOW_PRODUCTION=1 erzwingen).'
+end
+
 puts 'Seeding database...'
 
 # ============================================================
