@@ -156,8 +156,8 @@ module Admin
                                 clubs: [{ 'club_id' => @other_club.id, 'home_club' => true }])
       login(@vm)
 
-      %w[names_swapped first_name birthdate].each do |type|
-        extra = type == 'names_swapped' ? {} : { new_value: type == 'birthdate' ? '2000-01-01' : 'Neu' }
+      { 'names_swapped' => {}, 'first_name' => { new_value: 'Neu' },
+        'birthdate' => { new_value: '2000-01-01' } }.each do |type, extra|
         post '/api/v2/admin/player_change_requests.json',
              params: { player_id: @master.id, club_id: @club.id, correction_type: type,
                         secondary_player_id: foreign.id }.merge(extra)
