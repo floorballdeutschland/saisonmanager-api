@@ -83,13 +83,14 @@ class CrawlerThrottleTest < ActionDispatch::IntegrationTest
   test 'Schreibzugriffe fallen nicht unter den Crawler-Throttle' do
     travel_to Time.zone.now.beginning_of_minute do
       # Crawler stellen keine POSTs; ein irrtümlich passendes User-Agent darf
-      # deshalb keinen Schreibpfad drosseln.
+      # deshalb keinen Schreibpfad drosseln. Frueher stand hier der Login; der
+      # hat seit 11/2026 seinen eigenen Topf ('login/ip') und taugt nicht mehr
+      # als ungedrosselter Schreibpfad.
       70.times do
-        post '/api/v2/login', params: { username: 'gibtesnicht', password: 'falsch' },
-                              headers: { 'HTTP_USER_AGENT' => APPLEBOT }, as: :json
+        post '/api/v2/logout', headers: { 'HTTP_USER_AGENT' => APPLEBOT }, as: :json
       end
 
-      assert_response :unauthorized
+      assert_response :ok
     end
   end
 
