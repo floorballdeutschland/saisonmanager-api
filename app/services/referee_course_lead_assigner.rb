@@ -117,9 +117,9 @@ class RefereeCourseLeadAssigner
   # Ein Fehlschlag beim Versand nimmt die Zuordnung nicht zurueck; das Konto
   # kommt ueber „Passwort vergessen" an seinen Zugang.
   def send_invitation(user)
-    user.password_reset_token = SecureRandom.uuid
+    token = user.issue_password_reset_token(valid_for: User::ACCOUNT_INVITATION_VALIDITY)
     user.save!(validate: false)
-    UserMailer.course_lead_invited(user, @course).deliver_later
+    UserMailer.course_lead_invited(user, @course, token).deliver_later
   rescue StandardError => e
     Rails.logger.warn("RefereeCourseLeadAssigner: Einladung fuer User #{user.id} fehlgeschlagen: #{e.message}")
   end
