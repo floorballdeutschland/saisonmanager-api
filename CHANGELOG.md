@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Scan-Erinnerung nennt die Frist der SPO**: Die Mail an den Ausrichter nach Abschluss eines Spieltags (`ClubMailer#game_day_scan_reminder`) bat darum, die Scans „innerhalb der nächsten Tage“ einzureichen. Die SPO verlangt sie binnen 24 Stunden nach Spielbeginn; der Satz lautet jetzt „Bitte reicht innerhalb von 24 Stunden nach Spielbeginn einen Scan als PDF-Datei des physischen Spielberichtsbogens ein.“
+
 ## [2.8.1] - 2026-11-13
 
 ### Behoben
