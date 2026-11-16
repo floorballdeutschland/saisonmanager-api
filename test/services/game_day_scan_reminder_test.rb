@@ -28,6 +28,17 @@ class GameDayScanReminderTest < ActiveSupport::TestCase
     assert_not_nil @game_day.reload.scan_reminder_sent_at
   end
 
+  # Die SPO verlangt den Scan binnen 24 Stunden nach Spielbeginn. Frueher stand
+  # in der Mail "innerhalb der nächsten Tage" -- das widersprach der Ordnung.
+  test 'die Mail nennt die Frist der SPO' do
+    GameDayScanReminder.notify_due
+
+    body = ActionMailer::Base.deliveries.last.html_part&.body&.decoded ||
+           ActionMailer::Base.deliveries.last.body.decoded
+    assert_includes body, 'innerhalb von 24 Stunden nach Spielbeginn'
+    assert_not_includes body, 'nächsten Tage'
+  end
+
   test 'innerhalb der ersten Stunde wird nicht erinnert' do
     @game.update_columns(match_record_closed_at: 30.minutes.ago)
 
