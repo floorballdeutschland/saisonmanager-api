@@ -69,7 +69,10 @@ class SessionsController < ApplicationController
     # Benutzername kleinschreibungsneutral suchen (wie beim Login), damit auch
     # Bestandsnamen mit Großbuchstaben eine Reset-Mail erhalten.
     user = User.where('LOWER(user_name) = ?', params[:username].to_s.downcase).first
-    user.send_reset_information if user && !user.archived?
+    # Kurz nach dem letzten Versand keinen neuen Link ausstellen, sonst wird der
+    # Link der ersten Mail ungültig. Die Antwort bleibt gleich, damit sie nichts
+    # über das Konto verrät.
+    user.send_reset_information if user && !user.archived? && !user.password_reset_recently_sent?
 
     render json: { success: true }, status: :ok
   end

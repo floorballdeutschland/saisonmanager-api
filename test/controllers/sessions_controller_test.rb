@@ -83,6 +83,65 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert JSON.parse(response.body)['success']
   end
 
+  # Jeder neue Link entwertet den vorigen. Nach einem Doppelklick öffneten
+  # Nutzer die erste Mail und scheiterten mit 404 (16./17.11.2026).
+  test 'Passwort vergessen kurz hintereinander verschickt nur einen Link, der gültig bleibt' do
+    assert_emails 1 do
+      post '/api/v2/lost_password', params: { username: @user.user_name }, as: :json
+      post '/api/v2/lost_password', params: { username: @user.user_name }, as: :json
+    end
+    assert_response :ok
+    assert JSON.parse(response.body)['success']
+
+    token = ActionMailer::Base.deliveries.last.text_part.decoded[%r{/neues-passwort/([A-Za-z0-9_-]+)}, 1]
+    assert token, 'Link fehlt in der Mail'
+
+    post '/api/v2/reset_password',
+         params: { reset_token: token, user: { password: 'NeuesPasswort1', password_confirmation: 'NeuesPasswort1' } },
+         as: :json
+    assert_response :ok
+    assert @user.reload.authenticate('NeuesPasswort1')
+  end
+
+  test 'Passwort vergessen stellt nach Ablauf der Sperre einen neuen Link aus' do
+    post '/api/v2/lost_password', params: { username: @user.user_name }, as: :json
+    first_digest = @user.reload.password_reset_token_digest
+
+    travel(User::PASSWORD_RESET_RESEND_INTERVAL + 1.second) do
+      assert_emails 1 do
+        post '/api/v2/lost_password', params: { username: @user.user_name }, as: :json
+      end
+    end
+
+    refute_equal first_digest, @user.reload.password_reset_token_digest
+  end
+
+  test 'Passwort vergessen nach eingelöstem Link verschickt sofort einen neuen' do
+    @user.send_reset_information
+    @user.clear_password_reset_token
+    @user.save!(validate: false)
+
+    assert_emails 1 do
+      post '/api/v2/lost_password', params: { username: @user.user_name }, as: :json
+    end
+  end
+
+  test 'Passwort vergessen nach gescheitertem Versand sperrt das Nachfordern nicht' do
+    failing = Object.new
+    def failing.deliver_now
+      raise Net::ReadTimeout
+    end
+
+    UserMailer.stub(:reset_password, ->(*, **) { failing }) do
+      post '/api/v2/lost_password', params: { username: @user.user_name }, as: :json
+    end
+    assert_nil @user.reload.password_reset_sent_at
+
+    assert_emails 1 do
+      post '/api/v2/lost_password', params: { username: @user.user_name }, as: :json
+    end
+  end
+
   test 'Passwort vergessen für einen unbekannten Benutzernamen bleibt unauffällig' do
     assert_emails 0 do
       post '/api/v2/lost_password', params: { username: 'gibtesnicht' }, as: :json

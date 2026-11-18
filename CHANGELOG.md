@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Doppelt angefordertes „Passwort vergessen" macht den ersten Link nicht mehr ungültig**: Jeder neue Link entwertet den vorigen. Nach einem Doppelklick oder erneutem Anfordern öffneten Nutzer die erste Mail und scheiterten mit „Ungültiger oder abgelaufener Link", das Passwort blieb unverändert. Solange ein noch gültiger Link weniger als fünf Minuten alt ist, verschickt „Passwort vergessen" jetzt keinen neuen (neue Spalte `users.password_reset_sent_at`). Scheitert der Versand, gilt die Sperre nicht. Der Versand aus der Benutzerverwaltung ist nicht betroffen.
+
 ## [2.8.3] - 2026-11-16
 
 ### Behoben

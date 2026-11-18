@@ -186,18 +186,36 @@ class User < ApplicationRecord
   PASSWORD_RESET_VALIDITY = 24.hours
   ACCOUNT_INVITATION_VALIDITY = 14.days
 
+  # So lange stellt „Passwort vergessen" keinen neuen Link aus, solange der
+  # zuletzt verschickte noch gilt. Ein neuer Link macht den vorigen ungültig;
+  # nach einem Doppelklick oder ungeduldigem Nachfordern öffneten Nutzer die
+  # erste Mail und scheiterten mit „Ungültiger oder abgelaufener Link"
+  # (16./17.11.2026: 77 von 96 Versuchen). Die Mail braucht oft eine Minute.
+  PASSWORD_RESET_RESEND_INTERVAL = 5.minutes
+
   # Setzt Digest und Ablauf (ohne zu speichern) und liefert das Token im
   # Klartext für den Link zurück. Ein neues Token macht ein älteres ungültig.
   def issue_password_reset_token(valid_for: PASSWORD_RESET_VALIDITY)
     raw_token = SecureRandom.urlsafe_base64(32)
     self.password_reset_token_digest = Digest::SHA256.hexdigest(raw_token)
     self.password_reset_expires_at = valid_for.from_now
+    self.password_reset_sent_at = Time.current
     raw_token
+  end
+
+  # Ein noch gültiger Link ging vor weniger als PASSWORD_RESET_RESEND_INTERVAL
+  # raus. Dann verschickt „Passwort vergessen" keinen weiteren, damit der Link
+  # in der ersten Mail gültig bleibt.
+  def password_reset_recently_sent?
+    password_reset_token_digest.present? &&
+      password_reset_expires_at.present? && password_reset_expires_at.future? &&
+      password_reset_sent_at.present? && password_reset_sent_at > PASSWORD_RESET_RESEND_INTERVAL.ago
   end
 
   def clear_password_reset_token
     self.password_reset_token_digest = nil
     self.password_reset_expires_at = nil
+    self.password_reset_sent_at = nil
   end
 
   # Konto zu einem Link, solange er gilt. Leere Tokens dürfen nie zu einem
@@ -245,6 +263,9 @@ class User < ApplicationRecord
         "Passwort-Reset-Mail fehlgeschlagen (Transport) – User #{id}: #{e.class}: #{e.message}"
       )
       Sentry.capture_exception(e) if defined?(Sentry)
+      # Die Mail ist nicht angekommen, also darf ein erneutes „Passwort
+      # vergessen" nicht an der Sperre für schnelles Nachfordern hängen bleiben.
+      update_column(:password_reset_sent_at, nil)
       false
     end
   end
