@@ -14,6 +14,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - **Anmeldung gegen Passwortraten gedrosselt**: Für `POST login` gab es bisher keinerlei Grenze, Passwörter ließen sich also unbegrenzt durchprobieren. Jetzt gelten zwei Grenzen. Je IP höchstens 30 Anmeldeversuche in fünf Minuten (Rack::Attack `login/ip`, gilt für `/api/v2/login` und das alte `/login`, auch mit Endung wie `login.json`; IPv6-Adressen zählen je /64 gemeinsam). Je Benutzername nimmt das Konto nach zehn Versuchen für 15 Minuten keine Anmeldung mehr an, unabhängig von der IP und auch nicht mit dem richtigen Passwort. Gezählt wird vor der Passwortprüfung, damit gleichzeitig abgeschickte Anfragen die Grenze nicht überholen; eine gelungene Anmeldung und ein über „Passwort vergessen“ neu gesetztes Passwort heben die Sperre auf. Unbekannte Namen zählen genauso, damit die Antwort nicht verrät, ob es ein Konto gibt. Antwort jeweils 429 mit Hinweis auf „Passwort vergessen“.
 - **Mail-Drosseln ließen sich mit einer Endung umgehen**: Die IP-Grenzen für „Passwort vergessen“, „Benutzername vergessen“ und den Antrag auf einen API-Zugang verglichen den Pfad exakt, `lost_password.json` lief ungezählt durch. Sie prüfen jetzt ein Muster, das Endung und Schrägstriche abdeckt, und zählen IPv6-Adressen je /64 gemeinsam.
 
+## [2.8.3] - 2026-11-16
+
+### Behoben
+
+- **Links zum Setzen des Passworts laufen ab und stehen nicht mehr im Klartext in der Datenbank**: Gespeichert wird nur noch der SHA256-Digest des Tokens (`users.password_reset_token_digest`) mit Ablaufzeitpunkt (`password_reset_expires_at`); die Klartextspalte `password_reset_token` entfällt. „Passwort vergessen" und der Versand aus der Benutzerverwaltung gelten 24 Stunden, Einladungen für neu angelegte Konten (Benutzerverwaltung, Schiedsrichter-Massenanlage, Kursleitung) 14 Tage. Die Zustellung im Hintergrund schreibt ihre Argumente nicht mehr ins Log, weil darin jetzt das Token des Links steht. Ein neuer Link macht den vorherigen ungültig, archivierte Konten setzen über einen Link kein Passwort mehr. Mit der Migration werden alle offenen Links ungültig und lassen sich über „Passwort vergessen" neu anfordern.
+
+## [2.8.2] - 2026-11-16
+
+### Behoben
+
+- **Scan-Erinnerung nennt die Frist der SPO**: Die Mail an den Ausrichter nach Abschluss eines Spieltags (`ClubMailer#game_day_scan_reminder`) bat darum, die Scans „innerhalb der nächsten Tage“ einzureichen. Die SPO verlangt sie binnen 24 Stunden nach Spielbeginn; der Satz lautet jetzt „Bitte reicht innerhalb von 24 Stunden nach Spielbeginn einen Scan als PDF-Datei des physischen Spielberichtsbogens ein.“
+
 ## [2.8.1] - 2026-11-13
 
 ### Behoben

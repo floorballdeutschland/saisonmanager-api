@@ -147,4 +147,10 @@ class RetryingMailDeliveryJobTest < ActiveSupport::TestCase
 
     assert_equal 1, executor.max_length
   end
+
+  # Einladungsmails tragen das Token ihres Links als Argument; es darf nicht
+  # im Produktionslog landen.
+  test 'Argumente der Mailzustellung landen nicht im Log' do
+    assert_not RetryingMailDeliveryJob.log_arguments?
+  end
 end

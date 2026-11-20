@@ -217,14 +217,16 @@ class LoginThrottleTest < ActionDispatch::IntegrationTest
   # Die Sperrmeldung verweist auf „Passwort vergessen“. Ein neu gesetztes
   # Passwort muss die Sperre deshalb sofort aufheben.
   test 'ein ueber den Link neu gesetztes Passwort hebt die Sperre auf' do
-    @user.update!(password_reset_token: 'reset-token-911')
+    # Seit 2.8.3 nur noch als Digest gespeichert (issue_password_reset_token).
+    reset_token = @user.issue_password_reset_token(valid_for: 1.hour)
+    @user.save!
     with_real_cache do
       11.times { login(password: 'falsch') }
 
       assert_response :too_many_requests
 
       post '/api/v2/reset_password', params: {
-        reset_token: 'reset-token-911',
+        reset_token: reset_token,
         user: { password: 'NeuesPasswort2026', password_confirmation: 'NeuesPasswort2026' }
       }, as: :json
 
