@@ -142,6 +142,41 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  # Zwei fast gleichzeitige Anfragen in verschiedenen Puma-Workern laden das
+  # Konto, bevor eine von beiden den Link ausgestellt hat. Ein echter
+  # Wettlauf mit Threads ist im Test nicht verlässlich (alles läuft in einer
+  # Transaktion auf einer Verbindung), deshalb stellt der Test den veralteten
+  # Stand der zweiten Anfrage direkt her: Ohne Sperre prüft sie ihre eigene,
+  # alte Kopie, sieht keinen frischen Link und verschickt einen zweiten.
+  test 'Passwort vergessen: zweite Anfrage mit veraltetem Stand stellt keinen zweiten Link aus' do
+    first_request = User.find(@user.id)
+    second_request = User.find(@user.id)
+
+    assert_emails 1 do
+      assert first_request.request_password_reset
+      refute second_request.request_password_reset
+    end
+
+    assert_equal first_request.password_reset_token_digest, @user.reload.password_reset_token_digest,
+                 'der Link der ersten Mail muss gültig bleiben'
+  end
+
+  test 'Passwort vergessen hebt die Sperre auch bei einem unerwarteten Mailfehler auf' do
+    failing = Object.new
+    def failing.deliver_now
+      raise ArgumentError, 'kaputte Vorlage'
+    end
+
+    UserMailer.stub(:reset_password, ->(*, **) { failing }) do
+      assert_raises(ArgumentError) { @user.request_password_reset }
+    end
+    assert_nil @user.reload.password_reset_sent_at
+
+    assert_emails 1 do
+      post '/api/v2/lost_password', params: { username: @user.user_name }, as: :json
+    end
+  end
+
   test 'Passwort vergessen für einen unbekannten Benutzernamen bleibt unauffällig' do
     assert_emails 0 do
       post '/api/v2/lost_password', params: { username: 'gibtesnicht' }, as: :json

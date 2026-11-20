@@ -255,20 +255,47 @@ class User < ApplicationRecord
     token = issue_password_reset_token(valid_for:)
     return false unless save(validate: false)
 
-    begin
-      UserMailer.reset_password(self, token).deliver_now
-      true
-    rescue *MAIL_TRANSPORT_ERRORS => e
-      Rails.logger.error(
-        "Passwort-Reset-Mail fehlgeschlagen (Transport) – User #{id}: #{e.class}: #{e.message}"
-      )
-      Sentry.capture_exception(e) if defined?(Sentry)
-      # Die Mail ist nicht angekommen, also darf ein erneutes „Passwort
-      # vergessen" nicht an der Sperre für schnelles Nachfordern hängen bleiben.
-      update_column(:password_reset_sent_at, nil)
-      false
-    end
+    deliver_reset_information(token)
   end
+
+  # „Passwort vergessen": wie send_reset_information, aber ohne neuen Link,
+  # solange der zuletzt verschickte noch frisch ist (password_reset_recently_sent?).
+  #
+  # Prüfen und Ausstellen laufen unter einer Zeilensperre. Ohne sie sahen zwei
+  # fast gleichzeitige Anfragen (Doppelklick, mehrere Puma-Worker) beide keinen
+  # frischen Link, beide verschickten eine Mail, und der erste Link war wieder
+  # ungültig. with_lock lädt den Datensatz neu, die zweite Anfrage sieht also
+  # den Zeitstempel der ersten. Der langsame Mailversand läuft erst nach der
+  # Sperre; verschicken darf nur die Anfrage, die das Token ausgestellt hat.
+  def request_password_reset
+    token = with_lock do
+      next if password_reset_recently_sent?
+
+      issued = issue_password_reset_token
+      issued if save(validate: false)
+    end
+    token ? deliver_reset_information(token) : false
+  end
+
+  def deliver_reset_information(token)
+    UserMailer.reset_password(self, token).deliver_now
+    true
+  rescue *MAIL_TRANSPORT_ERRORS => e
+    Rails.logger.error(
+      "Passwort-Reset-Mail fehlgeschlagen (Transport) – User #{id}: #{e.class}: #{e.message}"
+    )
+    Sentry.capture_exception(e) if defined?(Sentry)
+    # Die Mail ist nicht angekommen, also darf ein erneutes „Passwort
+    # vergessen" nicht an der Sperre für schnelles Nachfordern hängen bleiben.
+    update_column(:password_reset_sent_at, nil)
+    false
+  rescue StandardError
+    # Auch bei jedem anderen Fehler ging keine Mail raus. Die Sperre aufheben,
+    # den Fehler aber weiterreichen, damit er sichtbar bleibt.
+    update_column(:password_reset_sent_at, nil)
+    raise
+  end
+  private :deliver_reset_information
 
   # --- E-Mail-Änderung mit Bestätigung (Double-Opt-In) ---------------------
   # Die neue Adresse wird als pending_email vorgemerkt und erst wirksam, wenn
