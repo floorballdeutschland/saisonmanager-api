@@ -681,7 +681,9 @@ class PlayersController < ApplicationController
     # Lizenz direkt nach dem Wegtransfer wieder auf `beantragt` setzen, ohne
     # Freigabe zurueck. Die Maske bietet den Knopf nur fuer abgelehnt und
     # zurueckgezogen an; die Schnittstelle hatte bisher keine Vorbedingung.
-    license = Player.find(params[:id]).licenses&.find { |l| l.is_a?(Hash) && l['id'] == params[:license_id] }
+    player = Player.find(params[:id])
+    # `_id`: Altbestand, den meta_user_license_change erst beim Schreiben umbenennt.
+    license = Array(player.licenses).find { |l| l.is_a?(Hash) && params[:license_id].in?([l['id'], l['_id']]) }
     if license && License.current_status_id(license) == License::TRANSFER
       return render json: { message: 'Eine Lizenz „ungültig wg. Transfer“ lässt sich nur mit einem neuen Antrag ' \
                                      'für die Mannschaft reaktivieren.' },
@@ -695,7 +697,7 @@ class PlayersController < ApplicationController
     # Wer beim ersten Antrag den Express-Haken vergessen und deshalb
     # zurückgezogen hat, kam ohne diesen Weg nicht mehr zur Expresslizenz.
     express = ActiveModel::Type::Boolean.new.cast(params[:express]) == true
-    express_league = express ? reenable_express_league(license) : nil
+    express_league = express ? reenable_express_league(player, license) : nil
     return if performed?
 
     meta_user_license_change(License::REQUESTED, express_league:)
@@ -1444,7 +1446,7 @@ class PlayersController < ApplicationController
   # Team#express_license_league). Rendert eine Absage selbst; der Aufrufer
   # fragt `performed?`. Die Rechteprüfung zuerst, sonst verrieten die übrigen
   # Absagen, ob ein fremdes Team gerade Expresslizenzen anbietet.
-  def reenable_express_league(license)
+  def reenable_express_league(player, license)
     return render json: { message: 'Lizenz nicht gefunden.' }, status: :not_found if license.blank?
 
     team = Team.find_by(id: license['team_id'])
@@ -1453,7 +1455,7 @@ class PlayersController < ApplicationController
     end
 
     express_league = team.express_license_league
-    refusal = License.express_reenable_refusal(license) ||
+    refusal = License.express_reenable_refusal(license, player:, team:) ||
               (express_league ? nil : 'Für diese Mannschaft ist derzeit keine Expresslizenz möglich.')
     return render json: { message: refusal }, status: :unprocessable_entity if refusal
 

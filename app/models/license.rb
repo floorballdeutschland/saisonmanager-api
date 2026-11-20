@@ -127,20 +127,33 @@ class License < ApplicationRecord
   end
 
   # Warum sich diese Lizenz nicht als Expresslizenz wieder einstellen lässt
-  # (PlayersController#reenable_license_request), oder nil.
+  # (PlayersController#reenable_license_request), oder nil. Die Rechteprüfung
+  # und die Frage, ob die Mannschaft gerade Express anbietet, bleiben dort.
   #
-  # Nur aus abgelehnt oder zurückgezogen, also genau dort, wo die Maske den
-  # Knopf anbietet: Ein laufender Antrag würde sonst per Wiedereinstellen
-  # nachträglich zur Expresslizenz. Und nie, wenn sie schon einmal erteilt war:
-  # Dann ist sie abgerechnet, und handle_license_request fügt den Zuschlag aus
-  # demselben Grund nicht nachträglich hinzu.
-  def self.express_reenable_refusal(license)
+  # - Nur aus abgelehnt oder zurückgezogen, also genau dort, wo die Maske den
+  #   Knopf anbietet: Ein laufender Antrag würde sonst nachträglich zu Express.
+  # - Nie, wenn sie schon einmal erteilt war: Dann ist sie abgerechnet, und
+  #   handle_license_request fügt den Zuschlag aus demselben Grund nicht hinzu.
+  # - Nicht, wenn sie schon Express ist: Es ginge nur eine zweite SBK-Mail hinaus.
+  # - Nicht bei mehrfach vergebener id (Altbestand nach Zusammenführungen):
+  #   meta_user_license_change schreibt in JEDEN Eintrag mit der id, der
+  #   Zuschlag träfe womöglich eine längst abgerechnete Lizenz.
+  # - Nicht bei einer Sperre (wie request_license): Sonst ginge an die SBK eine
+  #   Eilmeldung samt Zuschlag für einen Spieler, der nicht beantragen darf.
+  def self.express_reenable_refusal(license, player:, team:)
     unless [DENIED, WITHDRAWN].include?(current_status_id(license))
       return 'Als Expresslizenz lässt sich nur ein abgelehnter oder zurückgezogener Antrag wieder einstellen.'
     end
-    return unless ever_approved?(license)
+    return 'Diese Lizenz war bereits erteilt und lässt sich nicht nachträglich zur Expresslizenz machen.' if ever_approved?(license)
+    return 'Der Antrag ist bereits eine Expresslizenz.' if license['express'].present?
 
-    'Diese Lizenz war bereits erteilt und lässt sich nicht nachträglich zur Expresslizenz machen.'
+    id = license['id'] || license['_id']
+    if Array(player.licenses).count { |l| l.is_a?(Hash) && id.in?([l['id'], l['_id']]) } > 1
+      return 'Die Lizenz ist mehrfach erfasst. Bitte an den Verband wenden.'
+    end
+    return unless player.application_blocked? || player.suspension_for_team(team.id)
+
+    'Für diesen Spieler besteht eine Sperre. Ein neuer Antrag ist erst nach Ablauf der Sperre möglich.'
   end
 
   # Die eine Stelle, an der steht, welche Lizenz sich löschen lässt. Player#full_hash

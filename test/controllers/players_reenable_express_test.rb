@@ -134,8 +134,10 @@ class PlayersReenableExpressTest < ActionDispatch::IntegrationTest
     assert_not stored_license['express']
   end
 
+  # Mit einer Mannschaft OHNE Expressmoeglichkeit: Stuende die Rechtepruefung
+  # hinter den Absagen, kaeme hier 422 statt 403.
   test 'fremder Verein bekommt keine Auskunft ueber die Expressmoeglichkeit' do
-    team = team_with_express
+    team = team_with_express(enabled: false)
     license_id = license_for(team, License::WITHDRAWN)
     login_as(create(:user, :vm, club_id: create(:club).id))
 
@@ -143,5 +145,63 @@ class PlayersReenableExpressTest < ActionDispatch::IntegrationTest
 
     assert_response :forbidden
     assert_not stored_license['express']
+  end
+
+  test 'ein Antrag, der schon Express war, loest keine zweite Mail aus' do
+    team = team_with_express
+    license_id = license_for(team, License::DENIED)
+    @player.licenses.first['express'] = true
+    @player.save!
+    login_as(@vm)
+
+    assert_enqueued_emails 0 do
+      reenable(license_id, express: true)
+      assert_response :unprocessable_entity
+    end
+  end
+
+  # Mehrfach vergebene id (Altbestand nach Zusammenfuehrungen): Geschrieben wird
+  # in jeden Eintrag mit der id, der Zuschlag traefe auch die erteilte Lizenz.
+  test 'eine mehrfach vergebene Lizenz-id wird nicht zur Expresslizenz' do
+    team = team_with_express
+    license_id = license_for(team, License::WITHDRAWN)
+    old = @player.licenses.first.deep_dup
+    old['season_id'] = '15'
+    old['history'] = [{ 'license_status_id' => License::APPROVED, 'created_at' => 2.years.ago.iso8601,
+                        'created_by' => nil }]
+    @player.update!(licenses: @player.licenses + [old])
+    login_as(@vm)
+
+    reenable(license_id, express: true)
+
+    assert_response :unprocessable_entity
+    assert(@player.reload.licenses.none? { |l| l['express'] })
+  end
+
+  test 'gesperrter Spieler wird nicht als Expresslizenz wieder eingestellt' do
+    team = team_with_express
+    license_id = license_for(team, License::WITHDRAWN)
+    PlayerSuspension.create!(player: @player, team_id: team.id,
+                             valid_from: Date.current - 1, valid_until: Date.current + 30)
+    login_as(@vm)
+
+    assert_enqueued_emails 0 do
+      reenable(license_id, express: true)
+      assert_response :unprocessable_entity
+    end
+  end
+
+  test 'Altbestand mit _id laesst sich als Expresslizenz wieder einstellen' do
+    team = team_with_express
+    license_id = license_for(team, License::WITHDRAWN)
+    legacy = @player.licenses.first
+    legacy['_id'] = legacy.delete('id')
+    @player.update!(licenses: [legacy])
+    login_as(@vm)
+
+    reenable(license_id, express: true)
+
+    assert_response :ok
+    assert stored_license['express']
   end
 end

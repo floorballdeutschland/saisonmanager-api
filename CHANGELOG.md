@@ -11,7 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Neu
 
-- **Zurückgezogenen Lizenzantrag als Expresslizenz wieder einstellen**: Wer beim Antrag den Express-Haken vergessen und den Antrag nach Ablauf der kostenfreien Stunde zurückgezogen hatte, konnte den Spieler nur noch ohne Express „erneut beantragen". `reenable_license_request` nimmt jetzt `express: true` an, sofern die Mannschaft gerade eine Expresslizenz anbietet, und benachrichtigt wie beim ersten Antrag die zuständige SBK. Erlaubt nur aus „abgelehnt" und „zurückgezogen" und nicht für eine Lizenz, die schon einmal erteilt war. Der Eintrag im Verlauf trägt die Markierung `express_requested`.
+- **Zurückgezogenen Lizenzantrag als Expresslizenz wieder einstellen**: Wer beim Antrag den Express-Haken vergessen und den Antrag nach Ablauf der kostenfreien Stunde zurückgezogen hatte, konnte den Spieler nur noch ohne Express „erneut beantragen". `reenable_license_request` nimmt jetzt `express: true` an, sofern die Mannschaft gerade eine Expresslizenz anbietet, und benachrichtigt wie beim ersten Antrag die zuständige SBK. Erlaubt nur aus „abgelehnt" und „zurückgezogen", nicht für eine Lizenz, die schon einmal erteilt war oder schon Express ist, nicht bei mehrfach vergebener Lizenz-id und nicht bei einer Sperre des Spielers. Der Eintrag im Verlauf trägt die Markierung `express_requested`.
 
 ## [2.8.3] - 2026-11-16
 
