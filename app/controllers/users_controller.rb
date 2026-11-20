@@ -33,6 +33,10 @@ class UsersController < ApplicationController
     user.assign_attributes(reset_password_params)
     user.clear_password_reset_token
     if user.save
+      # Die Sperrmeldung beim Login verweist auf „Passwort vergessen“; ohne das
+      # Loeschen kaeme man mit dem neuen Passwort bis zum Ende des Fensters
+      # trotzdem nicht hinein.
+      LoginFailureCounter.reset(user.user_name)
       render json: { success: true }
     else
       render json: user.errors, status: :unprocessable_entity

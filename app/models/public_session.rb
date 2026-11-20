@@ -85,9 +85,10 @@ class PublicSession
       nil
     end
 
-    # Schlüssel für die Ausstellungs-Töpfe. IPv6 wird je /64 gebündelt: Ein
-    # Anschluss bekommt ein ganzes /64, und jede Adresse daraus einzeln zu
-    # zählen, gäbe einem Skript beliebig viele Töpfe.
+    # Schlüssel für die Ausstellungs-Töpfe, mitbenutzt von den IP-Töpfen für
+    # Anmeldung und Mail-Auslöser in config/initializers/rack_attack.rb. IPv6
+    # wird je /64 gebündelt: Ein Anschluss bekommt ein ganzes /64, und jede
+    # Adresse daraus einzeln zu zählen, gäbe einem Skript beliebig viele Töpfe.
     def issuer_key(ip)
       addr = IPAddr.new(ip.to_s)
       addr.ipv6? ? "#{addr.mask(64)}/64" : addr.to_s
