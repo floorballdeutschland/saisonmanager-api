@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Zurückgezogenen Lizenzantrag als Expresslizenz wieder einstellen**: Wer beim Antrag den Express-Haken vergessen und den Antrag nach Ablauf der kostenfreien Stunde zurückgezogen hatte, konnte den Spieler nur noch ohne Express „erneut beantragen". `reenable_license_request` nimmt jetzt `express: true` an, sofern die Mannschaft gerade eine Expresslizenz anbietet, und benachrichtigt wie beim ersten Antrag die zuständige SBK. Erlaubt nur aus „abgelehnt" und „zurückgezogen", nicht für eine Lizenz, die schon einmal erteilt war oder schon Express ist, nicht bei mehrfach vergebener Lizenz-id und nicht bei einer Sperre des Spielers. Der Eintrag im Verlauf trägt die Markierung `express_requested`.
+
 ### Verbessert
 
 - **Ruby 3.4.12 statt 3.2.4** (#884): Ruby 3.2 erhält seit März 2026 keine Sicherheitsupdates mehr, und für Ubuntu 26.04 gibt es in der CI kein 3.2.4. Basis-Image `ruby:3.4.12-bookworm` (libvips bleibt 8.14), Bundler 2.6.9 statt 2.3.7, `csv` als eigener Gem-Eintrag, weil Ruby 3.4 es nicht mehr als Standardbibliothek mitliefert. Die CI läuft wieder auf `ubuntu-latest`. Keine Migration. Nach dem Deploy auf .dev gezielt prüfen: CSV-/XLSX-Exporte (Lizenzabrechnung, Lizenzliste, SR-Listen), Bild-Uploads und -Varianten, Mailversand, Rake-Tasks.
