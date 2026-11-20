@@ -15,6 +15,10 @@ class PlayerChangeRequest < ApplicationRecord
   validate :new_value_must_be_a_date, if: -> { correction_type == 'birthdate' && new_value.present? }
   validates :rejection_reason, presence: true, if: -> { status == 'rejected' }
   validates :secondary_player, presence: true, if: -> { correction_type == 'merge' }
+  # Gegenstueck fuer alle anderen Antragsarten, als Auffangnetz hinter dem
+  # Controller. Nur beim Anlegen: Altbestand aus der Zeit vor 11/2026 kann ein
+  # Zweitprofil tragen und muss sich trotzdem genehmigen oder ablehnen lassen.
+  validates :secondary_player_id, absence: true, on: :create, unless: -> { correction_type == 'merge' }
   # Nur beim Anlegen: nach dem Genehmigen ist der secondary_player gemergt und
   # würde diese Prüfungen naturgemäß nicht mehr bestehen.
   validate :merge_must_be_executable, on: :create,
@@ -75,8 +79,10 @@ class PlayerChangeRequest < ApplicationRecord
 
   private
 
+  # Nur beim Merge. Altbestand anderer Antragsarten kann ein Zweitprofil
+  # tragen (siehe Validierung oben); dessen Daten gehen nicht mehr hinaus.
   def secondary_player_json
-    return nil unless secondary_player
+    return nil unless correction_type == 'merge' && secondary_player
 
     {
       id: secondary_player.id,
