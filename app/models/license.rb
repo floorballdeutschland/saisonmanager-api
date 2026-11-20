@@ -59,6 +59,13 @@ class License < ApplicationRecord
   # entwertet jede vorhandene Markierung, ein Test haelt den Wert fest.
   EXPRESS_WAIVED_KEY = 'express_waived'.freeze
 
+  # Markierung an dem `beantragt`-Eintrag, mit dem der Verein einen
+  # zurückgezogenen oder abgelehnten Antrag als Expresslizenz wieder eingestellt
+  # hat (PlayersController#reenable_license_request). `express` steht danach auf
+  # true wie bei einem Expressantrag von Anfang an; wann der Zuschlag dazukam,
+  # steht nur hier.
+  EXPRESS_REQUESTED_KEY = 'express_requested'.freeze
+
   # Markierung an dem `abgelehnt`-Eintrag, mit dem ein Admin einen Antrag
   # kostenfrei abgelehnt hat (PlayersController#handle_license_request mit
   # `free_of_charge`). Fall: Ein Verein beantragt in gutem Glauben Lizenzen
@@ -117,6 +124,23 @@ class License < ApplicationRecord
   # Expresszuschlag (PlayersController#handle_license_request).
   def self.ever_approved?(license)
     Array(license && license['history']).any? { |h| h.is_a?(Hash) && h['license_status_id'].to_i == APPROVED }
+  end
+
+  # Warum sich diese Lizenz nicht als Expresslizenz wieder einstellen lässt
+  # (PlayersController#reenable_license_request), oder nil.
+  #
+  # Nur aus abgelehnt oder zurückgezogen, also genau dort, wo die Maske den
+  # Knopf anbietet: Ein laufender Antrag würde sonst per Wiedereinstellen
+  # nachträglich zur Expresslizenz. Und nie, wenn sie schon einmal erteilt war:
+  # Dann ist sie abgerechnet, und handle_license_request fügt den Zuschlag aus
+  # demselben Grund nicht nachträglich hinzu.
+  def self.express_reenable_refusal(license)
+    unless [DENIED, WITHDRAWN].include?(current_status_id(license))
+      return 'Als Expresslizenz lässt sich nur ein abgelehnter oder zurückgezogener Antrag wieder einstellen.'
+    end
+    return unless ever_approved?(license)
+
+    'Diese Lizenz war bereits erteilt und lässt sich nicht nachträglich zur Expresslizenz machen.'
   end
 
   # Die eine Stelle, an der steht, welche Lizenz sich löschen lässt. Player#full_hash
