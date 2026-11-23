@@ -17,11 +17,11 @@
 # nicht als Abbruch behandelt.
 #
 # Aufruf (im Staging-Container): bundle exec rails staging:seed_demo_users
-# Passwort optional via STAGING_USER_PASSWORD (Default: 'staging-password').
+# Passwort aus STAGING_USER_PASSWORD (Pflicht, ohne Standardwert).
 #
 # Einzelne Konten können ein abweichendes Passwort bekommen: Trägt eine
 # Definition `"password_env": "STAGING_ADMIN_PASSWORD"`, wird der Wert dieser
-# Umgebungsvariablen verwendet (Fallback: das gemeinsame Passwort). So bleibt
+# Umgebungsvariablen verwendet (Pflicht, sonst Abbruch). So bleibt
 # z. B. das Admin-Konto vom gemeinsamen Tester-Passwort getrennt, ohne dass ein
 # Passwort im Repo steht – die Werte liegen in der gitignorierten `.env` des
 # Docker-Setups und werden von staging-db-refresh.sh durchgereicht.
@@ -42,7 +42,12 @@ namespace :staging do
     end
 
     require 'json'
-    shared_password = ENV['STAGING_USER_PASSWORD'].presence || 'staging-password'
+    # Kein Standardwert: Der fruehere Rueckfall 'staging-password' stand im
+    # oeffentlichen Repository, die Kontonamen in db/staging_demo_users.json
+    # ebenso. Fehlte die Variable, war demo_admin auf dem Klon der
+    # Produktionsdaten mit oeffentlich bekannten Zugangsdaten erreichbar.
+    shared_password = ENV['STAGING_USER_PASSWORD'].presence
+    abort 'ABBRUCH: STAGING_USER_PASSWORD ist nicht gesetzt (kein Standardwert).' unless shared_password
     staging_domain = 'staging.saisonmanager.dev'
     definitions = JSON.parse(Rails.root.join('db', 'staging_demo_users.json').read)
 
@@ -58,10 +63,11 @@ namespace :staging do
       # Abweichendes Passwort je Konto (Wert kommt aus der ENV, nicht aus dem
       # Repo). Fehlt die Variable, greift das gemeinsame Passwort.
       password_env = defn['password_env'].presence
+      # Fehlt sie, bricht der Task ab, statt still das gemeinsame Passwort zu
+      # nehmen: Das eigene Passwort gibt es gerade fuer die Konten mit den
+      # weitesten Rechten (demo_admin).
       password = password_env ? ENV[password_env].presence : nil
-      if password_env && password.nil?
-        warnings << "#{user_name}: #{password_env} nicht gesetzt – gemeinsames Passwort verwendet"
-      end
+      abort "ABBRUCH: #{password_env} ist nicht gesetzt (Passwort fuer #{user_name})." if password_env && password.nil?
       password ||= shared_password
 
       # Referenzen gegen die frischen Prod-Daten prüfen (nur warnen):
@@ -118,8 +124,10 @@ namespace :staging do
     end
 
     log.call("Demo-Benutzer angelegt/aktualisiert: #{definitions.size}")
-    seeded_by_password.each do |pw, names|
-      log.call("Passwort #{pw.inspect} gesetzt für #{names.size} Konto/Konten: #{names.join(', ')}")
+    # Nur die Kontonamen, nie die Passwoerter: Die Ausgabe landet im
+    # tee-Log von scripts/staging-db-refresh.sh.
+    seeded_by_password.each_value.with_index(1) do |names, i|
+      log.call("Passwort #{i} gesetzt für #{names.size} Konto/Konten: #{names.join(', ')}")
     end
     if warnings.any?
       log.call("WARNUNGEN (#{warnings.size}) – Referenzen nach dem Klon prüfen:")
