@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Context
 
-This is the Rails 7 API backend for the Floorball Saisonmanager. It lives in `~/saisonmanager-api` alongside `~/saisonmanager` (Angular frontend) and `~/saisonmanager-docker` (Docker Compose). See the frontend's CLAUDE.md for the full monorepo overview, deployment, and versioning workflow.
+This is the Rails 7 API backend for the Floorball Saisonmanager. It lives in `~/saisonmanager-api` alongside `~/saisonmanager` (Angular frontend) and `~/saisonmanager-docker` (Docker Compose). The development and release process (branches, staging, review, versioning, deploy, backups) is described in `docs/entwicklungsprozess.md`.
 
 ## Commands
 
@@ -75,4 +75,4 @@ When building arrays of `go_ids` from `permission_hash`, always use `go_ids.flat
 
 Version is defined in `config/initializers/version.rb` as `SAISONMANAGER_VERSION`.
 
-Every PR requires a `## [Unreleased]` entry in `CHANGELOG.md` using sections `### Behoben`, `### Neu`, `### Verbessert`. On merge to `main`: bump version and move Unreleased → versioned block.
+See `docs/entwicklungsprozess.md` for the full workflow. Every PR requires a `## [Unreleased]` entry in `CHANGELOG.md` using sections `### Behoben`, `### Neu`, `### Verbessert`. On merge to `main`: bump version and move Unreleased → versioned block.
