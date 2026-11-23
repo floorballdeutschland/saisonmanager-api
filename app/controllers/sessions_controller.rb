@@ -30,8 +30,9 @@ class SessionsController < ApplicationController
   # Kombination gar nicht erst startet.
   FORGOT_USERNAME_INTERVAL = 5.minutes
 
-  # Sperre je Benutzername gegen gezieltes Passwortraten, siehe
-  # LoginFailureCounter.
+  # Sperre je Benutzername (und Netz) gegen Passwortraten, siehe
+  # LoginFailureCounter. Gleicher Text fuer beide Toepfe und fuer unbekannte
+  # Namen.
   LOGIN_LOCKED_MESSAGE = 'Zu viele fehlgeschlagene Anmeldeversuche. Bitte warte 15 Minuten ' \
                          'oder setze dein Passwort über „Passwort vergessen“ zurück.'.freeze
 
@@ -41,12 +42,14 @@ class SessionsController < ApplicationController
     password = params[:password]
 
     # Vor bcrypt zaehlen, nicht danach: siehe LoginFailureCounter.
-    unless LoginFailureCounter.register_attempt(username)
+    # `request.ip` und nicht `remote_ip`: dieselbe Quelle wie `req.ip` im
+    # Rack::Attack-Topf 'login/ip', beide lesen allein X-Forwarded-For.
+    unless LoginFailureCounter.register_attempt(username, ip: request.ip)
       return render json: { success: false, message: LOGIN_LOCKED_MESSAGE }, status: :too_many_requests
     end
 
     user = User.login(username, password)
-    LoginFailureCounter.reset(username) if user
+    LoginFailureCounter.reset(username, ip: request.ip) if user
 
     if user&.archived?
       render json: { success: false, message: 'Dieses Benutzerkonto wurde archiviert.' }, status: :unauthorized
