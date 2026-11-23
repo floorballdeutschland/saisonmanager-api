@@ -116,6 +116,7 @@ GEM
     creek (2.6.3)
       nokogiri (>= 1.10.0)
       rubyzip (>= 1.0.0)
+    csv (3.3.7)
     date (3.5.1)
     diff-lcs (1.5.0)
     docile (1.4.0)
@@ -411,6 +412,7 @@ DEPENDENCIES
   committee-rails (~> 0.7)
   connection_pool (~> 2.5)
   creek
+  csv
   dotenv-rails
   factory_bot_rails
   guard
@@ -445,4 +447,4 @@ DEPENDENCIES
   xlsxtream
 
 BUNDLED WITH
-   2.3.7
+   2.6.9
