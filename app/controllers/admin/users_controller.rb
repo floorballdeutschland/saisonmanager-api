@@ -137,7 +137,7 @@ module Admin
           # Fehlschlag darf das Anlegen nicht nachträglich als Fehler ausgeben,
           # sonst legt der Aufrufer dasselbe Konto erneut an. Wie bei der
           # Schiri-Kontoanlage sagt email_sent, was passiert ist.
-          email_sent = user.send_reset_information
+          email_sent = user.send_reset_information(valid_for: User::ACCOUNT_INVITATION_VALIDITY)
           return render json: user_json(user).merge(email_sent:), status: :created
         else
           return render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
@@ -186,7 +186,7 @@ module Admin
       end
 
       if user.save
-        email_sent = user.send_reset_information
+        email_sent = user.send_reset_information(valid_for: User::ACCOUNT_INVITATION_VALIDITY)
         render json: user_json(user).merge(email_sent:), status: :created
       else
         render json: { errors: user.errors.full_messages }, status: :unprocessable_entity

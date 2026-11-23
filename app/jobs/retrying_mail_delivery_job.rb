@@ -28,6 +28,12 @@ class RetryingMailDeliveryJob < ActionMailer::MailDeliveryJob
   #
   # Nebeneffekt: Andere Jobs (ActiveStorage-Varianten, Analyse) behalten den
   # gemeinsamen Pool für sich, statt hinter einer Mailtranche zu warten.
+  # Keine Argumente ins Log: Einladungsmails tragen das Token ihres Links als
+  # Argument (User#issue_password_reset_token), und ActiveJob schreibt
+  # Argumente sonst bei "Enqueued", "Performing" und jeder Wiederholung im
+  # Klartext ins Produktionslog.
+  self.log_arguments = false
+
   def self.dedicated_async_adapter
     ActiveJob::QueueAdapters::AsyncAdapter.new(min_threads: 0, max_threads: 1, idletime: 60)
   end

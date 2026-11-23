@@ -9,9 +9,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Ruby 3.4.12 statt 3.2.4** (#884): Ruby 3.2 erhält seit März 2026 keine Sicherheitsupdates mehr, und für Ubuntu 26.04 gibt es in der CI kein 3.2.4. Basis-Image `ruby:3.4.12-bookworm` (libvips bleibt 8.14), Bundler 2.6.9 statt 2.3.7, `csv` als eigener Gem-Eintrag, weil Ruby 3.4 es nicht mehr als Standardbibliothek mitliefert. Die CI läuft wieder auf `ubuntu-latest`. Keine Migration. Nach dem Deploy auf .dev gezielt prüfen: CSV-/XLSX-Exporte (Lizenzabrechnung, Lizenzliste, SR-Listen), Bild-Uploads und -Varianten, Mailversand, Rake-Tasks.
+
 ### Behoben
 
+- **Korrekturantrag gab Stammdaten fremder Spieler heraus**: `POST admin/player_change_requests` übernahm `secondary_player_id` für jede Antragsart, geprüft wurde der Verein des Zweitprofils aber nur beim Zusammenführen. Ein Vereinsmanager konnte so mit „Vor- und Nachname vertauscht“ und einer beliebigen Spieler-ID Name und Geburtsdatum jedes Spielers im System abrufen, ohne dass der Betroffene davon erfuhr. Das Zweitprofil wird jetzt nur beim Zusammenführen gespeichert und ausgeliefert; das Modell lehnt es bei anderen Antragsarten ab. Bestehende Anträge mit Zweitprofil zeigen es in der Liste nicht mehr und bleiben bearbeitbar.
 - **Keine Zugangsdaten mehr als Standardwerte im Code**: Der Legacy-Import (`lib/tasks/import_legacy_data.rake`) trug Benutzername und Passwort eines echten Kontos als Default; er verlangt jetzt `LEGACY_USER` und `LEGACY_PASS` und bricht ohne sie ab. `staging:seed_demo_users` fiel ohne `STAGING_USER_PASSWORD` auf das öffentlich bekannte `staging-password` zurück und gab ohne `STAGING_ADMIN_PASSWORD` dem Admin-Demokonto das gemeinsame Passwort; beides bricht jetzt ab, und die Ausgabe nennt keine Passwörter mehr. `db/seeds.rb` (löscht die Settings, legt einen Admin mit `password123` an) verweigert den Lauf mit `RAILS_ENV=production`, was auch Staging einschließt.
+
+## [2.8.3] - 2026-11-16
+
+### Behoben
+
+- **Links zum Setzen des Passworts laufen ab und stehen nicht mehr im Klartext in der Datenbank**: Gespeichert wird nur noch der SHA256-Digest des Tokens (`users.password_reset_token_digest`) mit Ablaufzeitpunkt (`password_reset_expires_at`); die Klartextspalte `password_reset_token` entfällt. „Passwort vergessen" und der Versand aus der Benutzerverwaltung gelten 24 Stunden, Einladungen für neu angelegte Konten (Benutzerverwaltung, Schiedsrichter-Massenanlage, Kursleitung) 14 Tage. Die Zustellung im Hintergrund schreibt ihre Argumente nicht mehr ins Log, weil darin jetzt das Token des Links steht. Ein neuer Link macht den vorherigen ungültig, archivierte Konten setzen über einen Link kein Passwort mehr. Mit der Migration werden alle offenen Links ungültig und lassen sich über „Passwort vergessen" neu anfordern.
+
+## [2.8.2] - 2026-11-16
+
+### Behoben
+
+- **Scan-Erinnerung nennt die Frist der SPO**: Die Mail an den Ausrichter nach Abschluss eines Spieltags (`ClubMailer#game_day_scan_reminder`) bat darum, die Scans „innerhalb der nächsten Tage“ einzureichen. Die SPO verlangt sie binnen 24 Stunden nach Spielbeginn; der Satz lautet jetzt „Bitte reicht innerhalb von 24 Stunden nach Spielbeginn einen Scan als PDF-Datei des physischen Spielberichtsbogens ein.“
 
 ## [2.8.1] - 2026-11-13
 

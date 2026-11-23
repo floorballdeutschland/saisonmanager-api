@@ -77,7 +77,12 @@ module Admin
         club_id: club_id,
         correction_type: params[:correction_type],
         new_value: params[:new_value].presence,
-        secondary_player_id: params[:secondary_player_id].presence,
+        # Nur der Merge hat ein Zweitprofil. Bis 11/2026 wurde der Wert fuer
+        # jede Antragsart uebernommen, geprueft wurde der Verein des
+        # Zweitprofils aber nur beim Merge. Mit `names_swapped` (braucht keinen
+        # new_value) und einer beliebigen ID lieferte die 201-Antwort Name und
+        # Geburtsdatum jedes Spielers im System, ohne Spur beim Betroffenen.
+        secondary_player_id: (params[:secondary_player_id].presence if params[:correction_type] == 'merge'),
         status: 'pending',
         requested_by_user_id: current_user.id
       )
