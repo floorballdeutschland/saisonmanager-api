@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_11_12_150000) do
+ActiveRecord::Schema[7.2].define(version: 2026_11_18_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1404,6 +1404,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_11_12_150000) do
     t.string "pending_email"
     t.string "email_confirmation_token_digest"
     t.datetime "email_confirmation_expires_at"
+    t.datetime "password_reset_sent_at"
     t.index ["email_confirmation_token_digest"], name: "index_users_on_email_confirmation_token_digest", where: "(email_confirmation_token_digest IS NOT NULL)"
     t.index ["password_reset_token_digest"], name: "index_users_on_password_reset_token_digest", unique: true
     t.index ["referee_id"], name: "index_users_on_referee_id"

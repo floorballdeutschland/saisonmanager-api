@@ -11,7 +11,7 @@ class UsersController < ApplicationController
     @users = User.all.order(:user_name)
 
     # Passwort-Hash und Reset-Digest niemals ausliefern.
-    render json: @users.as_json(except: %i[password_digest password_reset_token_digest password_reset_expires_at])
+    render json: @users.as_json(except: %i[password_digest password_reset_token_digest password_reset_expires_at password_reset_sent_at])
   end
 
   def reset_password_token
