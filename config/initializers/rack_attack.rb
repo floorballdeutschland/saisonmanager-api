@@ -37,7 +37,12 @@ module Rack
     # Offene Endpunkte, die Mail an eine von außen bestimmte Adresse auslösen.
     # Sie brauchen weder Login noch API-Key, fallen also nicht unter den
     # Key-Throttle weiter unten.
-    MAIL_TRIGGER_PATHS = %w[/api/v2/forgot_username /api/v2/lost_password].freeze
+    #
+    # Als Muster statt als Liste fester Pfade: Die Routen tragen wie jede
+    # Rails-Route ein `(.:format)`, und der Router raeumt Schraegstriche weg. Mit
+    # dem frueheren exakten Vergleich liefen `…/lost_password.json` und
+    # `//api/v2/lost_password` in dieselbe Action, ohne dass der Topf zaehlte.
+    MAIL_TRIGGER_PATH = %r{\A/+api/+v2/+(?:forgot_username|lost_password)(?:\.[^/]*)?/*\z}
 
     # Pro IP drosseln, weil die fachlichen Wartezeiten in den Controllern nur je
     # Zieladresse greifen und das Gesamtvolumen nicht begrenzen: Mit einer Liste
@@ -52,8 +57,32 @@ module Rack
     # echte Client-IP und nicht die des Reverse Proxy – siehe die
     # forwarded_priority-Zuweisung oben, ohne die ein mitgeschickter
     # `Forwarded`-Header Vorrang hätte.
+    #
+    # IPv6 je /64 gebuendelt (PublicSession.issuer_key): Ein Anschluss bekommt
+    # ein ganzes /64, jede Adresse daraus einzeln zu zaehlen gaebe einem Skript
+    # beliebig viele Toepfe.
     throttle('mail-trigger/ip', limit: 10, period: 1.hour) do |req|
-      req.ip if req.post? && MAIL_TRIGGER_PATHS.include?(req.path)
+      ::PublicSession.issuer_key(req.ip) if req.post? && req.path.match?(MAIL_TRIGGER_PATH)
+    end
+
+    # Anmeldung. Bis 11/2026 gab es hier keinen Topf, Passwoerter liessen sich
+    # also unbegrenzt durchprobieren -- und die bcrypt-Hashes aller Konten
+    # lagen bis zum 12.11.2026 in einer aus dem Netz erreichbaren Datenbank.
+    #
+    # Dieser Topf zaehlt jeden Anmeldeversuch einer IP, egal ob er gelingt. Er
+    # bremst das Abklappern vieler Konten mit wenigen Passwoertern
+    # (Password-Spraying) und begrenzt nebenbei die bcrypt-Rechenzeit, die ein
+    # einzelner Absender erzwingen kann. Gegen das gezielte Raten fuer EIN Konto
+    # zaehlt SessionsController zusaetzlich die Fehlversuche je Benutzername,
+    # unabhaengig von der IP.
+    #
+    # Die Grenze ist grosszuegig, weil in einer Halle oder einer Geschaeftsstelle
+    # viele Menschen hinter derselben Adresse sitzen. Erfasst sind beide Routen
+    # (`/api/v2/login` und das alte `/login`), jeweils mit Endung und
+    # Schraegstrichen. IPv6 je /64 gebuendelt wie beim Mail-Topf oben.
+    LOGIN_PATH = %r{\A/+(?:api/+v2/+)?login(?:\.[^/]*)?/*\z}
+    throttle('login/ip', limit: 30, period: 5.minutes) do |req|
+      ::PublicSession.issuer_key(req.ip) if req.post? && req.path.match?(LOGIN_PATH)
     end
 
     # Einmal-Links für das Schiri-Feedback (Abgabe ohne Anmeldung). Der Token ist
@@ -70,7 +99,7 @@ module Rack
     end
 
     # Antrag auf einen API-Zugang. Löst Mail an ein festes Postfach aus, gehört
-    # damit in dieselbe Kategorie wie MAIL_TRIGGER_PATHS. Der Key-Throttle weiter
+    # damit in dieselbe Kategorie wie MAIL_TRIGGER_PATH. Der Key-Throttle weiter
     # unten hilft hier nicht: Er greift nur bei Keys mit gesetztem Rate-Limit,
     # und das Formular kommt ohne Key über die anonyme Website-Sitzung.
     # Einwilligung der Erziehungsberechtigten zu einer Kursanmeldung. Der Token
@@ -93,8 +122,11 @@ module Rack
       req.ip if req.get? && req.path.start_with?('/api/v2/public/referee_courses')
     end
 
+    # Antrag auf einen API-Zugang, IPv6 je /64 gebuendelt wie beim Mail-Topf.
     throttle('api-key-application/ip', limit: 10, period: 1.hour) do |req|
-      req.ip if req.post? && req.path == '/api/v2/api_key_applications'
+      next unless req.post? && req.path.match?(%r{\A/+api/+v2/+api_key_applications(?:\.[^/]*)?/*\z})
+
+      ::PublicSession.issuer_key(req.ip)
     end
 
     # Rückmeldung zum Tabletmodus (fe#560). Braucht zwar Login oder
@@ -378,9 +410,17 @@ module Rack
       now = match_data[:epoch_time]
       retry_after = match_data[:period] - (now % match_data[:period])
 
+      body = { error: 'Rate limit überschritten. Bitte später erneut versuchen.' }
+      # Das Frontend zeigt beim Login `message` an. Ein Hinweis auf „Passwort
+      # vergessen“ hilft dem, der hier wegen eigener Vertipper landet.
+      if request.env['rack.attack.matched'] == 'login/ip'
+        body[:message] = 'Zu viele Anmeldeversuche von dieser Adresse. Bitte warte einige Minuten ' \
+                         'oder setze dein Passwort über „Passwort vergessen“ zurück.'
+      end
+
       [429,
        { 'Content-Type' => 'application/json', 'Retry-After' => retry_after.to_s },
-       [{ error: 'Rate limit überschritten. Bitte später erneut versuchen.' }.to_json]]
+       [body.to_json]]
     end
   end
 end

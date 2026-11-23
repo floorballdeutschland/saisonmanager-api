@@ -366,6 +366,39 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_response :too_many_requests
   end
 
+  # Die Routen tragen ein `(.:format)`; der frueher exakte Pfadvergleich liess
+  # `…/lost_password.json` ungezaehlt durch.
+  test 'Eine angehaengte Endung umgeht den Mail-Throttle nicht' do
+    10.times { post '/api/v2/lost_password.json', params: { username: 'gibtesnicht' }, as: :json }
+
+    post '/api/v2/lost_password', params: { username: 'gibtesnicht' }, as: :json
+    assert_response :too_many_requests
+  end
+
+  test 'Doppelte Schraegstriche umgehen den Mail-Throttle nicht' do
+    10.times { post '//api/v2/forgot_username', params: { email: 'a@example.com' }, as: :json }
+
+    post '/api/v2/forgot_username', params: { email: 'b@example.com' }, as: :json
+    assert_response :too_many_requests
+  end
+
+  # Ein Anschluss bekommt ein ganzes IPv6-/64. Jede Adresse daraus einzeln zu
+  # zaehlen, gaebe einem Skript beliebig viele Toepfe.
+  test 'Wechselnde IPv6-Adressen aus einem /64 teilen sich den Mail-Throttle' do
+    10.times do |i|
+      post '/api/v2/lost_password', params: { username: 'gibtesnicht' }, as: :json,
+                                    env: { 'REMOTE_ADDR' => "2001:db8:1:2::#{i + 1}" }
+    end
+
+    post '/api/v2/lost_password', params: { username: 'gibtesnicht' }, as: :json,
+                                  env: { 'REMOTE_ADDR' => '2001:db8:1:2:ffff::1' }
+    assert_response :too_many_requests
+
+    post '/api/v2/lost_password', params: { username: 'gibtesnicht' }, as: :json,
+                                  env: { 'REMOTE_ADDR' => '2001:db8:1:3::1' }
+    assert_response :ok
+  end
+
   test 'Der Login selbst wird von diesem Throttle nicht gebremst' do
     12.times do
       post '/api/v2/login', params: { username: @user.user_name, password: 'password123' }, as: :json

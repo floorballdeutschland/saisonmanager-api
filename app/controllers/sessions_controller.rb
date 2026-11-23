@@ -30,12 +30,23 @@ class SessionsController < ApplicationController
   # Kombination gar nicht erst startet.
   FORGOT_USERNAME_INTERVAL = 5.minutes
 
+  # Sperre je Benutzername gegen gezieltes Passwortraten, siehe
+  # LoginFailureCounter.
+  LOGIN_LOCKED_MESSAGE = 'Zu viele fehlgeschlagene Anmeldeversuche. Bitte warte 15 Minuten ' \
+                         'oder setze dein Passwort über „Passwort vergessen“ zurück.'.freeze
+
   # POST /login
   def login
     username = params[:username].to_s.downcase
     password = params[:password]
 
+    # Vor bcrypt zaehlen, nicht danach: siehe LoginFailureCounter.
+    unless LoginFailureCounter.register_attempt(username)
+      return render json: { success: false, message: LOGIN_LOCKED_MESSAGE }, status: :too_many_requests
+    end
+
     user = User.login(username, password)
+    LoginFailureCounter.reset(username) if user
 
     if user&.archived?
       render json: { success: false, message: 'Dieses Benutzerkonto wurde archiviert.' }, status: :unauthorized
