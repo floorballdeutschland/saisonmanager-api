@@ -10,17 +10,14 @@ class UsersController < ApplicationController
 
     @users = User.all.order(:user_name)
 
-    # password_digest und password_reset_token niemals ausliefern.
-    render json: @users.as_json(except: %i[password_digest password_reset_token])
+    # Passwort-Hash und Reset-Digest niemals ausliefern.
+    render json: @users.as_json(except: %i[password_digest password_reset_token_digest password_reset_expires_at])
   end
 
   def reset_password_token
-    # Leere/fehlende Tokens würden per find_by(password_reset_token: nil) das erste
-    # Konto ohne Token (meist Admin) treffen → Account-Übernahme. Daher zuerst
-    # Token normalisieren (to_s, damit z. B. ein Array-Param nicht versehentlich
-    # zu einem NULL-Vergleich führt) und fehlenden Treffer als ungültigen Link abweisen.
-    token = params[:reset_token].to_s.presence
-    user = token && User.find_by(password_reset_token: token)
+    # Leere Tokens, abgelaufene Links und archivierte Konten weist
+    # User.find_by_password_reset_token ab.
+    user = User.find_by_password_reset_token(params[:reset_token])
 
     unless user
       return render json: { success: false, message: 'Ungültiger oder abgelaufener Link.' }, status: :not_found
@@ -33,7 +30,9 @@ class UsersController < ApplicationController
       return render json: { success: false, message: policy_error }, status: :unprocessable_entity
     end
 
-    if user.update(reset_password_params) && user.update(password_reset_token: nil)
+    user.assign_attributes(reset_password_params)
+    user.clear_password_reset_token
+    if user.save
       render json: { success: true }
     else
       render json: user.errors, status: :unprocessable_entity
