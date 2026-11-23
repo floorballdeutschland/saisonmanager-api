@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Anmeldesperre trifft das Netz des Angreifers, nicht mehr das ganze Konto**: Bisher nahm ein Konto nach zehn Fehlversuchen in 15 Minuten überall keine Anmeldung mehr an, egal woher die Versuche kamen. Eine einzige Adresse konnte so bekannte Konten (Admins, SBK, ratbare `sr-nachname`-Konten) dauerhaft aussperren. Die Sperre zählt jetzt je Benutzername und Netz (IPv4-Adresse bzw. IPv6-/64): Nach zehn Versuchen in 15 Minuten ist das Konto nur von diesem Netz aus gesperrt, der Inhaber meldet sich anderswo normal an. Gegen verteiltes Raten aus vielen Netzen gilt zusätzlich eine Grenze je Benutzername allein, 50 Versuche in einer Stunde; dorthin zählen nur Versuche, die nicht schon an der Netzgrenze scheitern, damit ein einzelnes Netz das Konto darüber nicht doch überall sperren kann. Eine gelungene Anmeldung leert beide Zähler, ein über „Passwort vergessen“ neu gesetztes Passwort leert den Namenszähler und den des Netzes, von dem aus der Link eingelöst wird. Antwort weiterhin 429 mit Hinweis auf „Passwort vergessen“, gleich für beide Grenzen und für unbekannte Namen.
+
 ## [2.9.0] - 2026-11-23
 
 ### Neu

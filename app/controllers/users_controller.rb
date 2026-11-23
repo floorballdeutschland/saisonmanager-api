@@ -35,8 +35,10 @@ class UsersController < ApplicationController
     if user.save
       # Die Sperrmeldung beim Login verweist auf „Passwort vergessen“; ohne das
       # Loeschen kaeme man mit dem neuen Passwort bis zum Ende des Fensters
-      # trotzdem nicht hinein.
-      LoginFailureCounter.reset(user.user_name)
+      # trotzdem nicht hinein. Geloescht werden der Namenstopf und der Topf des
+      # Netzes, von dem aus der Link eingeloest wird (siehe
+      # LoginFailureCounter.reset).
+      LoginFailureCounter.reset(user.user_name, ip: request.ip)
       render json: { success: true }
     else
       render json: user.errors, status: :unprocessable_entity

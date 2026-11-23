@@ -73,8 +73,9 @@ module Rack
     # bremst das Abklappern vieler Konten mit wenigen Passwoertern
     # (Password-Spraying) und begrenzt nebenbei die bcrypt-Rechenzeit, die ein
     # einzelner Absender erzwingen kann. Gegen das gezielte Raten fuer EIN Konto
-    # zaehlt SessionsController zusaetzlich die Fehlversuche je Benutzername,
-    # unabhaengig von der IP.
+    # zaehlt SessionsController zusaetzlich die Versuche je Benutzername und
+    # Netz sowie, mit hoeherer Grenze, je Benutzername allein (siehe
+    # LoginFailureCounter).
     #
     # Die Grenze ist grosszuegig, weil in einer Halle oder einer Geschaeftsstelle
     # viele Menschen hinter derselben Adresse sitzen. Erfasst sind beide Routen
