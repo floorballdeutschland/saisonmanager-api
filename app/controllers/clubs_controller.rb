@@ -183,8 +183,15 @@ class ClubsController < ApplicationController
     team = Team.find(params[:id])
     leagues = team.leagues
 
-    if current_user && user_may_read_team_licenses?(leagues)
+    if current_user && user_may_manage_team_licenses?(team, leagues)
       render json: team_licenses_hash(team)
+    elsif current_user && user_may_read_team_licenses?(leagues)
+      # Gegner und ausrichtende Vereine brauchen den Kader nur fuer den
+      # Aufstellungsdialog im Spielbericht. Bis api#906 bekamen sie das volle
+      # Lizenzwesen mit Player#full_hash (Geburtsdatum, E-Mail, Vereinshistorie,
+      # Deaktivierungsgrund, Lizenzhistorie) und die Vereinsspieler ohne
+      # Lizenz; jetzt dieselbe Kaderliste wie der Spielsekretariats-Link.
+      render json: secretary_team_licenses_hash(team)
     elsif secretary_token_permits_team?(team)
       render json: secretary_team_licenses_hash(team)
     else
@@ -552,6 +559,14 @@ class ClubsController < ApplicationController
     render json: { success: false,
                    message: 'Nicht angemeldet, und kein gültiger Spielsekretariats-Link.' },
            status: :unauthorized
+  end
+
+  # Das volle Lizenzwesen einer Mannschaft (Antraege, Dokumente, Vereinsspieler
+  # ohne Lizenz, Spielerstammdaten) nur fuer die, die sie verwalten: Admin, SBK
+  # der Liga, VM ihres Vereins (auch Spielgemeinschaft) und ihr TM.
+  def user_may_manage_team_licenses?(team, leagues)
+    ph = current_user.permission_hash
+    may_manage_team?(ph, team) || sbk_can_access_leagues?(ph, leagues)
   end
 
   def user_may_read_team_licenses?(leagues)

@@ -98,6 +98,7 @@ module Admin
       scope = Game.joins(game_day: :league).includes(
         :home_team, :guest_team, :proceeding_proposal,
         { game_scan: :uploaded_by }, { game_referee_report: :uploaded_by },
+        { game_protests: { file_attachment: :blob } },
         game_day: [{ league: { game_operation: { state_association: :checklist_items } } }, :arena, :club]
       )
 
@@ -205,6 +206,7 @@ module Admin
         scan: scan_hash(game, game_day),
         referee_report: referee_report_hash(game),
         proceeding_proposal: proceeding_proposal_hash(game),
+        protests: protests_hash(game),
         checklist_negative_count: negative.size,
         checklist_negative_items: negative,
         checklist_veto_submitted_at: game.checklist_veto_submitted_at,
@@ -249,6 +251,18 @@ module Admin
         uploaded_by_name: report.uploaded_by&.fullname&.strip.presence,
         uploaded_by_email: report.uploaded_by&.email.presence
       }
+    end
+
+    # Je gewählter Partei (Game#protest_parties) und je vorhandenem Protest
+    # einer inzwischen abgewählten Partei eine Zeile (GameProtest.overview_row).
+    # „other" ohne Link, der Vorgang läuft manuell. Ohne Protest leer.
+    def protests_hash(game)
+      by_party = game.game_protests.index_by(&:party)
+      parties = (Array(game.protest_parties) | by_party.keys)
+                .sort_by { |party| Game::PROTEST_PARTIES.index(party) || 99 }
+      return [] if parties.empty?
+
+      parties.map { |party| GameProtest.overview_row(game, party, by_party[party]) }
     end
 
     def proceeding_proposal_hash(game)
@@ -397,7 +411,7 @@ module Admin
       # aussteht, wären sie zwangsläufig alle gesetzt – die halbe Restsaison
       # trüge dann eine Auffälligkeit, und die Markierung verlöre ihren Wert.
       #
-      # Die übrigen Flags bleiben unberührt: protest, forfait,
+      # Die übrigen Flags bleiben unberührt: protest, forfait, special_event,
       # special_event_string und Strafen kann nur setzen, wer den Bericht
       # führt, ein ausstehendes Spiel trägt sie also ohnehin nicht.
       pending = upcoming?(game)
@@ -405,6 +419,10 @@ module Admin
       {
         protest: game.protest || false,
         forfait: game.forfait.to_i.positive?,
+        # Der Haken für sich: Er kann ohne Beschreibung gesetzt sein, wenn die
+        # SBK den Bericht trotz fehlender Beschreibung abgeschlossen hat oder
+        # bei Altbeständen. Die Übersicht soll beides zeigen.
+        special_event: game.special_event || false,
         special_event_string: game.special_event_string.presence,
         severe_penalty_count: severe_penalty_count(game),
         # nil? statt blank?: 0 Zuschauer ist eine gültige Angabe, aber `0.blank?`

@@ -8,8 +8,7 @@ class RefereeMailer < ApplicationMailer
   # Game#report_form_reasons und Game#report_form_recipient.
   REPORT_REASON_LABELS = {
     match_penalty: 'eine Matchstrafe',
-    technical_match_penalty: 'eine technische Matchstrafe',
-    special_event: 'ein besonderes Ereignis'
+    technical_match_penalty: 'eine technische Matchstrafe'
   }.freeze
 
   REPORT_RECIPIENT_LABELS = {
@@ -352,8 +351,8 @@ class RefereeMailer < ApplicationMailer
 
   # Berichtsformular an die SBK (api#789). Zwei Fälle:
   #
-  # * zur Kenntnis: technische Matchstrafe oder besonderes Ereignis. Beides
-  #   zieht kein VSK-Verfahren nach sich, die VSK bekommt den Bericht nicht.
+  # * zur Kenntnis: technische Matchstrafe. Sie zieht kein VSK-Verfahren nach
+  #   sich, die VSK bekommt den Bericht nicht.
   # * `proceeding: 'pending'`: volle Matchstrafe im manuellen Modus des
   #   Landesverbands, der Verfahrensvorschlag ist offen. Die SBK muss das
   #   Verfahren vor der VSK selbst einleiten; die Mail verlinkt deshalb die
@@ -557,7 +556,7 @@ class RefereeMailer < ApplicationMailer
     }
   end
 
-  # „eine Matchstrafe und ein besonderes Ereignis"
+  # „eine Matchstrafe und eine technische Matchstrafe"
   def report_reasons_text(reasons)
     reasons.filter_map { |r| REPORT_REASON_LABELS[r] }
            .to_sentence(words_connector: ', ', two_words_connector: ' und ', last_word_connector: ' und ')

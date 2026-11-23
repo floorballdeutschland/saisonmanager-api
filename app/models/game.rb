@@ -22,6 +22,7 @@ class Game < ApplicationRecord
   has_one :referee_assignment, dependent: :destroy
   has_one :game_referee_report, dependent: :destroy
   has_one :game_scan, dependent: :destroy
+  has_many :game_protests, dependent: :destroy
   has_one :proceeding_proposal, dependent: :destroy
   has_many :referee_feedbacks, dependent: :destroy
   # Ohne dependent: :destroy blieben beim Löschen eines Spiels (Spielplan-
@@ -127,6 +128,18 @@ class Game < ApplicationRecord
   # die Arbeitsansicht „Spielberichte" an Admin und SBK.
   REPORT_REVIEW_ATTRIBUTES = %w[report_reviewed_at report_reviewed_by_user_id report_review_comment].freeze
 
+  # Wer protestiert, gehört wie der Vermerk zum besonderen Ereignis zum
+  # internen Teil des Spielberichts und geht nur über #hidden_elements und die
+  # Arbeitsansicht der SBK hinaus, nicht über die öffentliche Spielseite.
+  PROTEST_ATTRIBUTES = %w[protest_parties].freeze
+
+  # Protestparteien in der Reihenfolge der Berichtsmaske. „other" (Andere)
+  # löst nichts aus, der Vorgang läuft dann außerhalb des Systems.
+  PROTEST_PARTIES = %w[host home guest referees other].freeze
+
+  before_validation :normalize_protest_parties
+  validate :protest_parties_available
+
   # Ein festgesetztes Forfait-Ergebnis wird immer als Paar gefuehrt: nur eine
   # Seite gesetzt hiesse, die andere aus der Liga-Vorgabe zu ergaenzen -- ein
   # Mischergebnis, das niemand so beschlossen hat.
@@ -151,6 +164,10 @@ class Game < ApplicationRecord
     'referee2_signed' => 'Schiedsrichter 2'
   }.freeze
 
+  # Mindestlänge der Beschreibung eines besonderen Ereignisses, siehe
+  # #special_event_description_missing?. Das Frontend prüft dieselbe Zahl.
+  SPECIAL_EVENT_DESCRIPTION_MIN_LENGTH = 50
+
   # Die fehlenden Unterschriften als Spaltennamen, leer wenn nichts fehlt.
   # Eine Regel für beide Stellen: die Sperre beim Abschließen des Berichts
   # (GamesController#set_game_status) und den Hinweis „Unterschriften fehlen"
@@ -170,6 +187,49 @@ class Game < ApplicationRecord
 
   def missing_signature_labels
     missing_signatures.map { |field| REQUIRED_SIGNATURES[field] }
+  end
+
+  # Ausrichter als eigene Partei nur, wenn er nicht das Heimteam stellt. Sonst
+  # wäre derselbe Verein zweimal wählbar und bekäme zwei Links.
+  def host_separate_from_home?
+    host_club_id = game_day&.club_id
+    host_club_id.present? && host_club_id != home_team&.club_id
+  end
+
+  def available_protest_parties
+    PROTEST_PARTIES.reject { |party| party == 'host' && !host_separate_from_home? }
+  end
+
+  def protest_party_label(party)
+    case party
+    when 'host' then "Ausrichter (#{game_day&.club&.name})"
+    when 'home'
+      host_separate_from_home? ? "Heimteam (#{home_team&.name})" : "Heimteam / Ausrichter (#{home_team&.name})"
+    when 'guest' then "Gastteam (#{guest_team&.name})"
+    when 'referees' then 'Schiedsrichter*innen'
+    when 'other' then 'Andere'
+    else party.to_s
+    end
+  end
+
+  def protest_party_options
+    available_protest_parties.map { |party| { key: party, label: protest_party_label(party) } }
+  end
+
+  # Haken „Protest" ohne gewählte Partei: Dann geht beim Abschluss keine Mail
+  # raus, und niemand weiß, wer protestiert hat.
+  def protest_parties_missing?
+    protest? && Array(protest_parties).empty?
+  end
+
+  # Absage beim Abschluss (GamesController#set_game_status), oder nil. Wie bei
+  # den Unterschriften nicht für Admin und SBK.
+  def protest_parties_error
+    return nil unless protest_parties_missing?
+
+    'Der Spielbericht kann nicht abgeschlossen werden: Es ist ein Protest angehakt, aber keine ' \
+      'Protestpartei ausgewählt. Wähle unter „Sonstige Ereignisse“ aus, wer Protest eingelegt hat ' \
+      '(bei einer Partei, die nicht aufgeführt ist, „Andere“).'
   end
 
   # Im Tabletmodus erfasst? Davon hängt ab, ob die öffentliche Spielseite die
@@ -196,7 +256,7 @@ class Game < ApplicationRecord
     options = (options || {}).dup
     unless options[:only]
       options[:except] = Array(options[:except]) + REFEREE_NOTES_ATTRIBUTES + REPORT_REVIEW_ATTRIBUTES +
-                         SECRET_ATTRIBUTES
+                         SECRET_ATTRIBUTES + PROTEST_ATTRIBUTES
     end
     super(options)
   end
@@ -479,8 +539,12 @@ class Game < ApplicationRecord
   # Verlangt das Spiel ein Berichtsformular der Schiris? Unabhängig vom
   # Schalter des Landesverbands; der entscheidet erst über Erinnerung und
   # Versand (#report_form_recipient).
+  #
+  # Ein besonderes Ereignis verlangt seit 11.11.2026 kein Berichtsformular
+  # mehr. Es wird stattdessen im Spielbericht selbst beschrieben, siehe
+  # #special_event_description_missing?.
   def report_form_required?
-    match_penalty? || technical_match_penalty? || special_event? || false
+    match_penalty? || technical_match_penalty? || false
   end
 
   # Gründe, aus denen ein Berichtsformular verlangt ist, in fester Reihenfolge.
@@ -488,14 +552,49 @@ class Game < ApplicationRecord
     reasons = []
     reasons << :match_penalty if match_penalty?
     reasons << :technical_match_penalty if technical_match_penalty?
-    reasons << :special_event if special_event?
     reasons
+  end
+
+  # Ist ein besonderes Ereignis angehakt, muss es im Spielbericht mit
+  # mindestens SPECIAL_EVENT_DESCRIPTION_MIN_LENGTH Zeichen beschrieben sein,
+  # bevor der Bericht abgeschlossen werden kann. Leerraum am Rand zählt nicht.
+  def special_event_description_missing?
+    return false unless special_event?
+
+    special_event_description_length < SPECIAL_EVENT_DESCRIPTION_MIN_LENGTH
+  end
+
+  # Absage beim Abschluss (GamesController#set_game_status), oder nil. Sie
+  # unterscheidet leer und zu kurz und nennt im zweiten Fall die Zahlen:
+  # „mindestens 50 Zeichen" allein liest sich bei 47 getippten wie ein Fehler
+  # der Maske.
+  def special_event_description_error
+    return nil unless special_event_description_missing?
+
+    min = SPECIAL_EVENT_DESCRIPTION_MIN_LENGTH
+    length = special_event_description_length
+    if length.zero?
+      'Der Spielbericht kann nicht abgeschlossen werden: Es ist ein besonderes Ereignis angehakt, ' \
+        'aber noch nicht beschrieben. Beschreibe es unter „Sonstige Ereignisse“ im Feld ' \
+        "„Besonderes Ereignis“. Nötig sind mindestens #{min} Zeichen."
+    else
+      'Der Spielbericht kann nicht abgeschlossen werden: Die Beschreibung des besonderen Ereignisses ' \
+        "ist mit #{length} Zeichen zu kurz, nötig sind mindestens #{min} (es fehlen noch #{min - length}). " \
+        'Ergänze unter „Sonstige Ereignisse“ im Feld „Besonderes Ereignis“, was passiert ist.'
+    end
+  end
+
+  # Zählt wie das Frontend (special-event-description.ts): Unicode-Leerraum
+  # am Rand weg, dann Zeichen. `String#strip` ließe ein geschütztes Leerzeichen
+  # stehen, das JavaScripts `trim` entfernt.
+  def special_event_description_length
+    special_event_string.to_s.gsub(/\A[[:space:]]+|[[:space:]]+\z/, '').length
   end
 
   # Wohin das hochgeladene Berichtsformular geht:
   #
   #   'vsk'          volle Matchstrafe (VSK-Verfahren)
-  #   'sbk'          technische Matchstrafe oder besonderes Ereignis, zur Kenntnis
+  #   'sbk'          technische Matchstrafe, zur Kenntnis
   #   'vsk_and_sbk'  beides, je eine eigene Mail
   #
   # Im manuellen Modus geht alles an die SBK: Sie leitet ein VSK-Verfahren
@@ -505,8 +604,7 @@ class Game < ApplicationRecord
     return nil unless report_form_workflow_enabled? && report_form_required?
     return 'sbk' if state_association.effective_manual_proceeding_creation
 
-    sbk_case = technical_match_penalty? || special_event?
-    return 'vsk_and_sbk' if match_penalty? && sbk_case
+    return 'vsk_and_sbk' if match_penalty? && technical_match_penalty?
 
     match_penalty? ? 'vsk' : 'sbk'
   end
@@ -1345,6 +1443,8 @@ class Game < ApplicationRecord
       missing_signatures:,
 
       protest:,
+      protest_parties:,
+      protest_party_options:,
       special_event:,
       playoff:,
       overtime:,
@@ -2218,6 +2318,20 @@ class Game < ApplicationRecord
 
     self.forfait_home_goals = nil
     self.forfait_guest_goals = nil
+  end
+
+  # Ohne Protest keine Parteien; Reihenfolge und Dubletten wie in der Maske.
+  def normalize_protest_parties
+    self.protest_parties = protest? ? PROTEST_PARTIES & Array(protest_parties).map(&:to_s) : []
+  end
+
+  # Nur Parteien, die für dieses Spiel wählbar sind. „host" bei einem
+  # Ausrichter, der zugleich Heimteam ist, wäre eine Dublette von „home".
+  def protest_parties_available
+    invalid = Array(protest_parties) - available_protest_parties
+    return if invalid.empty? || !protest_parties_changed?
+
+    errors.add(:base, "Diese Protestpartei ist für das Spiel nicht wählbar: #{invalid.join(', ')}")
   end
 
   def forfait_goals_are_a_complete_pair

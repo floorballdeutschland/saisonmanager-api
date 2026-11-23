@@ -520,7 +520,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         # @upload_url und @deadline.
         { key: 'upload_url', description: 'Adresse der Spielseite mit dem Upload des Berichtsformulars' },
         { key: 'deadline', description: 'Frist für die Abgabe (Datum und Uhrzeit)' },
-        { key: 'report_reasons', description: 'Anlass des Berichts, z. B. „eine Matchstrafe und ein besonderes Ereignis“' },
+        { key: 'report_reasons', description: 'Anlass des Berichts, z. B. „eine Matchstrafe und eine technische Matchstrafe“' },
         { key: 'report_recipient', description: 'Wohin der Bericht nach dem Upload geht, z. B. „die zuständige VSK“' }
       ]
     },
@@ -770,6 +770,39 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'game_number', description: 'Spielnummer' },
         { key: 'home_team', description: 'Name der Heimmannschaft' },
         { key: 'guest_team', description: 'Name der Gastmannschaft' }
+      ]
+    },
+    'GameMailer#protest_upload_invitation' => {
+      mailer_class: 'GameMailer',
+      action_name: 'protest_upload_invitation',
+      description: 'Link an eine Protestpartei, über den sie das ausgefüllte Protestformular hochlädt ' \
+                   '(beim Abschluss des Spielberichts für jede gewählte Partei außer „Andere", ' \
+                   'danach bei einer ergänzten Partei oder wenn die SBK den Link erneut sendet).',
+      default_subject: 'Protest zu Spiel {{game_number}}: Protestformular hochladen',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'game_number', description: 'Spielnummer' },
+        { key: 'home_team', description: 'Name der Heimmannschaft' },
+        { key: 'guest_team', description: 'Name der Gastmannschaft' },
+        { key: 'party', description: 'Angeschriebene Protestpartei, z. B. „Gastteam (TV Musterstadt)“' },
+        # Ohne den Platzhalter könnte eine gepflegte Vorlage den Link nicht
+        # enthalten: ein nicht leerer Body ersetzt das ERB-View vollständig.
+        { key: 'upload_url', description: 'Persönlicher Upload-Link der Partei (gilt, bis ein Formular hochgeladen oder ein neuer Link verschickt ist)' }
+      ]
+    },
+    'GameMailer#protest_submitted_to_sbk' => {
+      mailer_class: 'GameMailer',
+      action_name: 'protest_submitted_to_sbk',
+      description: 'Information an die SBK über ein hochgeladenes Protestformular, die Datei hängt an.',
+      default_subject: 'Protestformular eingegangen – Spiel {{game_number}}: {{home_team}} vs. {{guest_team}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'game_number', description: 'Spielnummer' },
+        { key: 'home_team', description: 'Name der Heimmannschaft' },
+        { key: 'guest_team', description: 'Name der Gastmannschaft' },
+        { key: 'party', description: 'Protestpartei, die das Formular hochgeladen hat' }
       ]
     },
     'GameDayMailer#referee_checklist_veto' => {

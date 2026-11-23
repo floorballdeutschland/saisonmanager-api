@@ -1,0 +1,19 @@
+<h2>Protestformular eingegangen – Spiel Nr. <%= @game.game_number %></h2>
+
+<p>Hallo,</p>
+
+<p>
+  zu Spiel Nr. <strong><%= @game.game_number %></strong>
+  (<%= @game.home_team_name %> vs. <%= @game.guest_team_name %><% if @game_day&.date.present? %>,
+  <%= format_game_day_date(@game_day.date) %><% end %>) hat
+  <strong><%= @party_label %></strong> am
+  <strong><%= @protest.submitted_at.in_time_zone('Europe/Berlin').strftime('%d.%m.%Y um %H:%M Uhr') %></strong>
+  ein Protestformular hochgeladen. Es hängt dieser E-Mail an.
+</p>
+
+<p>
+  Das Formular liegt außerdem in der Arbeitsansicht
+  <a href="<%= @overview_url %>">Spielberichte</a> beim Spiel unter
+  „Protest eingelegt“.
+  <% if @game_url.present? %>Zum Spiel: <a href="<%= @game_url %>"><%= @game_url %></a><% end %>
+</p>

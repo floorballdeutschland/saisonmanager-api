@@ -35,9 +35,8 @@ class GamesIncidentReportReminderTest < ActionDispatch::IntegrationTest
       forfait: 0,
       overtime: false,
       legacy: false, **all_signatures,
-      events: [],
+      events: [{ 'id' => 1, 'penalty_id' => '5', 'penalty_code_id' => '7' }],
       players: { 'home' => [], 'guest' => [] },
-      special_event: true,
       referee1_string: '12345 Eree, Ref'
     )
     r1 = create(:referee, email: 'ref1@example.de')
@@ -75,8 +74,8 @@ class GamesIncidentReportReminderTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  test 'ohne besonderes Ereignis und ohne Matchstrafe bleibt es still' do
-    @game.update!(special_event: false)
+  test 'ohne Matchstrafe bleibt es still' do
+    @game.update!(events: [])
     login(create(:user, :admin))
 
     assert_no_enqueued_emails do
@@ -85,11 +84,13 @@ class GamesIncidentReportReminderTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  test 'eine technische Matchstrafe löst die Erinnerung auch ohne besonderes Ereignis aus' do
-    @game.update!(special_event: false, events: [{ 'id' => 1, 'penalty_id' => '5', 'penalty_code_id' => '7' }])
+  # Seit 11.11.2026 verlangt ein besonderes Ereignis kein Berichtsformular
+  # mehr, es wird stattdessen im Spielbericht beschrieben.
+  test 'ein besonderes Ereignis allein löst keine Erinnerung aus' do
+    @game.update!(events: [], special_event: true, special_event_string: 'x' * 50)
     login(create(:user, :admin))
 
-    assert_enqueued_emails 1 do
+    assert_no_enqueued_emails do
       close_match_record
     end
     assert_response :success
@@ -111,13 +112,15 @@ class GamesIncidentReportReminderTest < ActionDispatch::IntegrationTest
   end
 
   test 'die Erinnerung nennt im Mischfall VSK und SBK' do
-    @game.update!(events: [{ 'id' => 1, 'penalty_id' => '6' }])
+    @game.update!(special_event: true, special_event_string: 'x' * 50,
+                  events: [{ 'id' => 1, 'penalty_id' => '6' }, { 'id' => 2, 'penalty_id' => '5' }])
     login(create(:user, :admin))
 
     perform_enqueued_jobs { close_match_record }
 
     body = reminder_body
-    assert_includes body, 'eine Matchstrafe und ein besonderes Ereignis'
+    assert_includes body, 'eine Matchstrafe und eine technische Matchstrafe vermerkt'
+    assert_not_includes body, 'besonderes Ereignis'
     assert_includes body, 'an die zuständige VSK und die zuständige SBK weitergeleitet'
   end
 

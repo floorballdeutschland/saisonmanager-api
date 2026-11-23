@@ -13,6 +13,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Ruby 3.4.12 statt 3.2.4** (#884): Ruby 3.2 erhält seit März 2026 keine Sicherheitsupdates mehr, und für Ubuntu 26.04 gibt es in der CI kein 3.2.4. Basis-Image `ruby:3.4.12-bookworm` (libvips bleibt 8.14), Bundler 2.6.9 statt 2.3.7, `csv` als eigener Gem-Eintrag, weil Ruby 3.4 es nicht mehr als Standardbibliothek mitliefert. Die CI läuft wieder auf `ubuntu-latest`. Keine Migration. Nach dem Deploy auf .dev gezielt prüfen: CSV-/XLSX-Exporte (Lizenzabrechnung, Lizenzliste, SR-Listen), Bild-Uploads und -Varianten, Mailversand, Rake-Tasks.
 
+## [2.8.3] - 2026-11-16
+
+### Behoben
+
+- **Links zum Setzen des Passworts laufen ab und stehen nicht mehr im Klartext in der Datenbank**: Gespeichert wird nur noch der SHA256-Digest des Tokens (`users.password_reset_token_digest`) mit Ablaufzeitpunkt (`password_reset_expires_at`); die Klartextspalte `password_reset_token` entfällt. „Passwort vergessen" und der Versand aus der Benutzerverwaltung gelten 24 Stunden, Einladungen für neu angelegte Konten (Benutzerverwaltung, Schiedsrichter-Massenanlage, Kursleitung) 14 Tage. Die Zustellung im Hintergrund schreibt ihre Argumente nicht mehr ins Log, weil darin jetzt das Token des Links steht. Ein neuer Link macht den vorherigen ungültig, archivierte Konten setzen über einen Link kein Passwort mehr. Mit der Migration werden alle offenen Links ungültig und lassen sich über „Passwort vergessen" neu anfordern.
+
+## [2.8.2] - 2026-11-16
+
+### Behoben
+
+- **Scan-Erinnerung nennt die Frist der SPO**: Die Mail an den Ausrichter nach Abschluss eines Spieltags (`ClubMailer#game_day_scan_reminder`) bat darum, die Scans „innerhalb der nächsten Tage“ einzureichen. Die SPO verlangt sie binnen 24 Stunden nach Spielbeginn; der Satz lautet jetzt „Bitte reicht innerhalb von 24 Stunden nach Spielbeginn einen Scan als PDF-Datei des physischen Spielberichtsbogens ein.“
+
+## [2.8.1] - 2026-11-13
+
+### Behoben
+
+- **Lizenzlisten geben Gegnern keine Spielerstammdaten mehr heraus**: Die Liga-Lizenzliste (`GET user/leagues/:id/licenses`) dürfen alle Vereine und Teams einer Liga abrufen, also auch für die Kader der Gegner. Sie lieferte je Spieler den vollständigen Datensatz der Spielerverwaltung, darunter Geburtsdatum, E-Mail-Adresse, Vereinshistorie, Gründe für Deaktivierung und Namensverbergung sowie die Lizenzhistorie mit Bearbeitern und Begründungen, bei Sperren auch deren Begründung. Jetzt enthält jede Zeile nur noch, was die Liste anzeigt: Name, Lizenzstatus, Erst-/Zweitlizenz, Antrags-, Erteilungs- und Freigabedatum sowie Geltungsbereich und Dauer einer Sperre. Für das Symbol für Minderjährige kommt statt des Geburtsdatums `adult_on` (der 18. Geburtstag), und das nur, solange er höchstens ein Jahr zurückliegt; so stimmt das Symbol auch für vergangene Spieltage der Saison. Dieselbe Lücke hatte die Mannschafts-Lizenzliste (`GET user/team/:id/licenses`): Das volle Lizenzwesen samt Vereinsspielern ohne Lizenz bekommen jetzt nur noch Admin, SBK, der VM des Vereins und der TM der Mannschaft; Gegner und ausrichtende Vereine erhalten die Kaderliste des Aufstellungsdialogs, wie beim Spielsekretariats-Link. Admin und SBK sehen die vollständigen Ligadaten weiter über `admin/leagues/:id/licenses`. Das Frontend (fe#660) liest `adult_on` und fällt bei der alten API auf das Geburtsdatum zurück.
+
+## [2.8.0] - 2026-11-12
+
+### Neu
+
+- **Protest mit Protestparteien und Upload des Protestformulars**: Nach dem Haken „Protest“ wählt die Spielleitung, wer Protest eingelegt hat (Mehrfachauswahl): Heimteam, Gastteam, Schiedsrichter*innen, Andere und, wenn der Ausrichter nicht das Heimteam stellt, der Ausrichter getrennt davon. Ohne gewählte Partei lässt sich der Bericht nicht abschließen (Admin und SBK des Spielbetriebs ausgenommen). Beim Abschluss bekommt jede Partei außer „Andere“ eine Mail mit einem eigenen Link, über den sie das Protestformular als PDF ohne Anmeldung hochlädt (`/protest/:token`, ohne technische Frist, ein Upload je Link). Das Formular wird gespeichert (`game_protests`) und geht mit Anhang an die SBK des Spielbetriebs; in der Arbeitsansicht „Spielberichte“ steht je Partei der Stand (Link verschickt, keine Adresse, Formular öffnen). Empfänger: Ausrichter über die Vereinspost, Mannschaften über dieselbe Kaskade wie die Spieltagsbestätigung (Teammanager, sonst Vereinsmanager, sonst Vereinsadresse), Schiedsrichter*innen über ihre Adresse aus der Ansetzung. Bei „Andere“ passiert nichts, der Vorgang läuft manuell. Nach dem Abschluss kann nur noch die SBK den Protest ändern; eine ergänzte Partei bekommt ihren Link dann sofort. Über „Link erneut senden“ verschickt die SBK einen neuen Link (`POST admin/games/:id/protests/:party/resend`), wahlweise an eine eingegebene Adresse, etwa wenn keine hinterlegt war; der alte Link wird ungültig. Neue Mailvorlagen `GameMailer#protest_upload_invitation` und `#protest_submitted_to_sbk`. Muss vor dem Frontend live sein.
+
+### Verbessert
+
+- **Besonderes Ereignis braucht eine Beschreibung statt eines Berichtsformulars**: Ein besonderes Ereignis verlangt kein Berichtsformular der Schiedsrichter mehr; es löst weder die 24h-Erinnerung aus noch wird es beim Upload als Anlass genannt oder an die SBK weitergeleitet. Matchstrafen und technische Matchstrafen bleiben unverändert. Stattdessen lässt sich ein Spielbericht mit angehaktem besonderem Ereignis erst abschließen, wenn die Beschreibung mindestens 50 Zeichen hat (Leerraum am Rand zählt nicht). Die Ablehnung unterscheidet eine fehlende von einer zu kurzen Beschreibung und nennt im zweiten Fall Zeichenzahl und Rest. Wie bei den Unterschriften gilt die Sperre nicht für Admin und die SBK des Spielbetriebs. Die Spielberichte-Übersicht der SBK liefert den Haken jetzt als eigenes Flag `special_event`, damit ein besonderes Ereignis auch ohne Beschreibung als Auffälligkeit erscheint. Eine in der Verwaltung gepflegte Vorlage der Erinnerungsmail, die das besondere Ereignis im Text nennt, muss von Hand angepasst werden.
+- **Abhängigkeiten**: Sicherheits- und Fehlerkorrekturen in nokogiri 1.19.5, rack 3.2.8 und crass 1.0.8.
+
 ## [2.7.0] - 2026-11-11
 
 ### Neu

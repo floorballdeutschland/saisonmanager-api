@@ -64,6 +64,11 @@ module Rack
       req.ip if req.path.start_with?('/api/v2/referee_feedback_invitations')
     end
 
+    # Upload-Links der Protestparteien, aus demselben Grund.
+    throttle('protest-upload/ip', limit: 30, period: 1.hour) do |req|
+      req.ip if req.path.start_with?('/api/v2/protests/')
+    end
+
     # Antrag auf einen API-Zugang. Löst Mail an ein festes Postfach aus, gehört
     # damit in dieselbe Kategorie wie MAIL_TRIGGER_PATHS. Der Key-Throttle weiter
     # unten hilft hier nicht: Er greift nur bei Keys mit gesetztem Rate-Limit,

@@ -170,11 +170,21 @@ module Admin
       assert flags['protest']
       assert flags['forfait']
       assert_equal 'Hallenausfall', flags['special_event_string']
+      assert_not flags['special_event']
       assert flags['missing_referee2']
       assert flags['missing_audience']
       # Ein Forfait-Spiel wurde nicht gespielt, auf seinem Bogen unterschreibt
       # niemand (Game#missing_signatures).
       assert_not flags['missing_signatures']
+    end
+
+    test 'ein besonderes Ereignis erscheint auch ohne Beschreibung' do
+      @game.update!(special_event: true, special_event_string: '')
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      flags = row(@game.id)['flags']
+      assert flags['special_event']
+      assert_nil flags['special_event_string']
     end
 
     test 'fehlende Unterschriften werden gemeldet' do

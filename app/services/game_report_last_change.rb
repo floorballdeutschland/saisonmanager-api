@@ -12,6 +12,7 @@
 # - Papierbogen und Schiedsrichterbericht, jeweils updated_at: Ein ersetzter
 #   Bericht hängt die neue Datei an denselben Datensatz, und ActiveStorage
 #   berührt ihn dabei (touch_attachment_records),
+# - ein hochgeladenes Protestformular (submitted_at),
 # - die Anlage eines Verfahrensvorschlags. Seine späteren Statuswechsel sind
 #   Schritte der Spielleitung selbst und zählen nicht.
 #
@@ -31,6 +32,7 @@ class GameReportLastChange
       game.game_scan&.updated_at,
       game.game_referee_report&.updated_at,
       game.proceeding_proposal&.created_at,
+      *game.game_protests.map(&:submitted_at),
       *objection_times
     ].compact.max
   end

@@ -114,4 +114,52 @@ class GameMailer < ApplicationMailer
       }
     )
   end
+
+  # Upload-Link an eine Protestpartei (GameProtestInviter). Antworten gehen an
+  # die SBK des Spielbetriebs, sie führt den Protest.
+  def protest_upload_invitation(protest, token)
+    @game = protest.game
+    @game_day = @game.game_day
+    @party_label = protest.party_label
+    @upload_url = "#{FrontendUrl.base}/protest/#{token}"
+
+    templated_mail(
+      to: protest.recipients,
+      # Wie bei der SBK-Mail (ProtestsController#notify_sbk): ohne SBK-Adresse
+      # das Ansetzungs-Postfach, damit „antwortet einfach" irgendwo ankommt.
+      default_reply_to: @game.state_association&.effective_sbk_email.presence || RefereeMailer::REPLY_TO,
+      placeholders: {
+        game_number: @game.game_number,
+        home_team: @game.home_team_name,
+        guest_team: @game.guest_team_name,
+        party: @party_label,
+        upload_url: @upload_url
+      }
+    )
+  end
+
+  # Ein hochgeladenes Protestformular an die SBK, mit der Datei im Anhang.
+  def protest_submitted_to_sbk(protest, sbk_email)
+    @game = protest.game
+    @game_day = @game.game_day
+    @protest = protest
+    @party_label = protest.party_label
+    @overview_url = "#{FrontendUrl.base}/verwaltung/spielberichte"
+    @game_url = @game.url
+
+    if protest.file.attached?
+      blob = protest.file.blob
+      attachments[blob.filename.to_s] = { mime_type: blob.content_type, content: blob.download }
+    end
+
+    templated_mail(
+      to: sbk_email,
+      placeholders: {
+        game_number: @game.game_number,
+        home_team: @game.home_team_name,
+        guest_team: @game.guest_team_name,
+        party: @party_label
+      }
+    )
+  end
 end
