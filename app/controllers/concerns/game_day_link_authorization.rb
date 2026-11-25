@@ -42,6 +42,16 @@ module GameDayLinkAuthorization
     go_id = game_day.league&.game_operation_id
     return true if ph[:sbk].present? && (ph[:sbk].include?(0) || ph[:sbk].include?(go_id))
 
+    host_manager_of?(game_day)
+  end
+
+  # Nur der Ausrichter-Teil von may_manage_game_day_link?, ohne Admin und SBK:
+  # VM des ausrichtenden Vereins oder TM einer an diesem Spieltag spielenden
+  # Mannschaft dieses Vereins. Gebraucht, wo es um Daten geht, die die Rolle
+  # Admin/SBK sonst nicht einschließt (Schiedsrichter-Kontakte, api#935).
+  def host_manager_of?(game_day)
+    ph = permissions
+
     # `game_days.club_id` ist nullable, und der Spielplan-Import quittiert einen
     # fehlenden Ausrichter nur mit einer Warnung (LeaguesController), legt den
     # Spieltag also an. Ohne Ausrichter gibt es hier bewusst keinen Zugang: Wer
@@ -58,7 +68,7 @@ module GameDayLinkAuthorization
   end
 
   # Die Mannschaften dieses Spieltags, die der/die Angemeldete als Teammanager:in
-  # betreut. Verglichen wird anschließend in may_manage_game_day_link? über
+  # betreut. Verglichen wird anschließend in host_manager_of? über
   # `all_club_ids`: Eine Spielgemeinschaft, die unter ihrem Partnerverein
   # ausrichtet, fiele sonst durch, obwohl sie am eigenen Tisch sitzt.
   def own_teams(game_day)

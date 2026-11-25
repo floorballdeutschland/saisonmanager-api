@@ -163,6 +163,14 @@ class GameDaySecretaryLinksController < ApplicationController
     groups
   end
 
+  # Spiele der Übersicht samt Ansetzung: game_day_games_json liest daraus die
+  # Schiedsrichter und den Coach. Ohne das Vorladen kämen je Spiel bis zu vier
+  # Abfragen dazu.
+  OVERVIEW_GAME_INCLUDES = [
+    :home_team, :guest_team,
+    { referee_assignment: %i[referee1 referee2 coach club] }
+  ].freeze
+
   # Die nicht gruppierbaren Spieltage gehen ohne den Umweg über
   # sibling_game_days direkt in die Rechteprüfung. Ihre Spiele, Ligen und
   # Mannschaften gehören deshalb hier geladen: `own_teams` fasst zu jedem Spiel
@@ -173,7 +181,7 @@ class GameDaySecretaryLinksController < ApplicationController
     return [] if game_days.empty?
 
     GameDay.where(id: game_days.map(&:id))
-           .includes(:league, games: %i[home_team guest_team])
+           .includes(:league, games: OVERVIEW_GAME_INCLUDES)
            .to_a
   end
 
@@ -262,7 +270,7 @@ class GameDaySecretaryLinksController < ApplicationController
       league_id: game_day.league_id,
       league: game_day.league&.name,
       arena: { name: game_day.arena&.name },
-      games: game_day.games.sort_by { |g| [g.start_time.to_s, g.id] }.map { |g| thumbnail_game_json(g) }
+      games: game_day.games.sort_by { |g| [g.start_time_sort_key, g.id] }.map { |g| thumbnail_game_json(g) }
     }
   end
 
@@ -308,7 +316,7 @@ class GameDaySecretaryLinksController < ApplicationController
 
     condition = Array.new(pairs.size, '(arena_id = ? AND date = ?)').join(' OR ')
     GameDay.where(condition, *pairs.flatten)
-           .includes(:arena, :league, games: %i[home_team guest_team])
+           .includes(:arena, :league, games: OVERVIEW_GAME_INCLUDES)
            .to_a
   end
 
@@ -373,7 +381,10 @@ class GameDaySecretaryLinksController < ApplicationController
       # Ein Link deckt nur die Spieltage ab, für die der/die Angemeldete
       # berechtigt ist. Weicht das von den Spieltagen der Halle ab, soll das
       # Frontend es benennen können statt stillschweigend weniger zu liefern.
-      game_days: covered.map { |gd| game_day_stub(gd).merge(overlay_link: overlay_link_json(overlays_by_game_day[gd.id])) },
+      game_days: covered.map do |gd|
+        stub = game_day_stub(gd).merge(overlay_link: overlay_link_json(overlays_by_game_day[gd.id]))
+        host_manager_of?(gd) ? stub.merge(games: game_day_games_json(gd)) : stub
+      end,
       other_game_days_in_hall: (game_days - covered).map { |gd| game_day_stub(gd) },
       link: link && {
         valid_from: link.valid_from&.iso8601,
@@ -398,6 +409,54 @@ class GameDaySecretaryLinksController < ApplicationController
       valid_from: link.valid_from&.iso8601,
       expires_at: link.expires_at.iso8601,
       created_by: link.created_by&.fullname
+    }
+  end
+
+  # Die Spiele eines eigenen Spieltags mit der Schiedsrichteransetzung, damit
+  # der Verein die Gespanne einladen kann. Dieselben Personendaten stehen in der
+  # Ausrichter-Mail (GameDayMailer#published_referees_to_host), die aber erst
+  # rausgeht, wenn alle Spiele des Spieltags veröffentlicht sind, und nur an
+  # hinterlegte Vereinsadressen. Gäste stehen in keiner Vereinsliste, für sie
+  # ist das der einzige dauerhafte Weg.
+  #
+  # Nur für VM und TM des Ausrichters (host_manager_of?), nicht über den
+  # Admin-/SBK-Zweig von may_manage_game_day_link?: Wer zugleich SBK und VM
+  # ist, bekäme sonst die Schiedsrichter fremder Ausrichter derselben Halle.
+  # Der Gastverein sieht den Spieltag gar nicht.
+  def game_day_games_json(game_day)
+    game_day.games.sort_by { |g| [g.start_time_sort_key, g.id] }.map do |game|
+      {
+        id: game.id,
+        game_number: game.game_number,
+        start_time: game.start_time,
+        home_team: game.home_team&.name,
+        guest_team: game.guest_team&.name,
+        referee_assignment: host_assignment_json(game.referee_assignment)
+      }
+    end
+  end
+
+  # Vor der Veröffentlichung nur der Zustand, ohne Personen: Eine vorläufige
+  # Ansetzung plant die Kommission noch um, und die Mail an den Ausrichter geht
+  # auch erst mit der Veröffentlichung raus. Telefonnummer und „kurzfristig
+  # mobil" bleiben bewusst bei der Ansetzung, die Mail nennt sie auch nicht.
+  def host_assignment_json(assignment)
+    return nil if assignment.nil?
+    return { status: assignment.status } unless assignment.status == 'published'
+
+    {
+      status: assignment.status,
+      referees: assignment.referees.map { |r| host_referee_json(r) },
+      coach: assignment.coach && host_referee_json(assignment.coach),
+      club: assignment.club&.name
+    }
+  end
+
+  def host_referee_json(referee)
+    {
+      name: "#{referee.vorname} #{referee.nachname}".strip,
+      guest: referee.guest?,
+      email: referee.email.presence
     }
   end
 
