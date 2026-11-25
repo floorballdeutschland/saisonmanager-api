@@ -7,6 +7,11 @@ class GameStartTimeSortKeyTest < ActiveSupport::TestCase
     assert_equal 14 * 60, Game.new(start_time: '14:00').start_time_sort_key
   end
 
+  test 'liest auch die Altform mit Punkt' do
+    assert_equal (12 * 60) + 15, Game.new(start_time: '12.15').start_time_sort_key
+    assert_equal (10 * 60) + 45, Game.new(start_time: '10.45 ').start_time_sort_key
+  end
+
   test 'ohne lesbare Zeit ans Ende' do
     [nil, '', 'TBD'].each do |value|
       assert_equal 24 * 60, Game.new(start_time: value).start_time_sort_key, value.inspect

@@ -151,7 +151,9 @@ class Game < ApplicationRecord
   # Sortierschlüssel für den Anstoß in Minuten seit Mitternacht. `start_time`
   # ist eine Textspalte: Als Text käme "9:00" hinter "14:00", und ein leerer
   # Wert stünde vor allen anderen. Ohne lesbare Zeit sortiert das Spiel ans Ende.
-  START_TIME_PATTERN = /\A\s*(\d{1,2}):(\d{2})/
+  # Ältere Saisons schreiben die Zeit auch mit Punkt ("12.15", gut 4000 Spiele
+  # auf Prod, Stand 25.11.2026).
+  START_TIME_PATTERN = /\A\s*(\d{1,2})[:.](\d{2})/
 
   def start_time_sort_key
     match = START_TIME_PATTERN.match(start_time.to_s)
