@@ -490,6 +490,9 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
   test 'die Abfragezahl der Übersicht wächst nicht mit den Spieltagen ohne Halle' do
     user = create(:user, :tm, team_id: @home.id)
     @game_day.update!(arena: nil)
+    # Wie in hall_less_game_day_for: Sonst fiele die Abfrage nach den
+    # Schiedsrichtern nur bei der zweiten Messung an.
+    publish_assignment(@game, referee1: create(:referee), referee2: create(:referee), coach: create(:referee))
     login(user)
     queries_for_one = count_queries { get '/api/v2/user/secretary_game_days' }
     assert_response :success
@@ -783,6 +786,95 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     assert_response :unauthorized
   end
 
+  # --- Schiedsrichter des Spieltags ------------------------------------------
+
+  test 'Übersicht nennt dem Ausrichter die veröffentlichten Schiedsrichter mit E-Mail' do
+    regular = create(:referee, vorname: 'Anna', nachname: 'Pfiff', email: 'anna@example.org',
+                               telefonnummer: '0170 123')
+    guest = create(:referee, lizenznummer: nil, guest: true, vorname: 'Jan', nachname: 'Knap',
+                             email: 'jan@example.org')
+    coach = create(:referee, vorname: 'Carl', nachname: 'Coach', email: 'carl@example.org')
+    publish_assignment(@game, referee1: regular, referee2: guest, coach: coach)
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    game = JSON.parse(response.body).first['game_days'].first['games'].first
+    assert_equal @game.id, game['id']
+    assignment = game['referee_assignment']
+    assert_equal 'published', assignment['status']
+    assert_equal [
+      { 'name' => 'Anna Pfiff', 'guest' => false, 'email' => 'anna@example.org' },
+      { 'name' => 'Jan Knap', 'guest' => true, 'email' => 'jan@example.org' }
+    ], assignment['referees']
+    assert_equal({ 'name' => 'Carl Coach', 'guest' => false, 'email' => 'carl@example.org' }, assignment['coach'])
+    assert_not_includes response.body, '0170 123', 'die Telefonnummer bleibt bei der Ansetzung'
+  end
+
+  test 'Teammanager des Ausrichters sieht die Schiedsrichter ebenfalls' do
+    publish_assignment(@game, referee1: create(:referee, email: 'r1@example.org'))
+    login(create(:user, :tm, team_id: @home.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    referees = JSON.parse(response.body).first['game_days'].first['games'].first.dig('referee_assignment', 'referees')
+    assert_equal(['r1@example.org'], referees.map { |r| r['email'] })
+  end
+
+  test 'vorläufige Ansetzung nennt dem Ausrichter keine Personen' do
+    RefereeAssignment.create!(game: @game, referee1: create(:referee, email: 'geheim@example.org'),
+                              status: 'tentative')
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    game = JSON.parse(response.body).first['game_days'].first['games'].first
+    assert_equal({ 'status' => 'tentative' }, game['referee_assignment'])
+    assert_not_includes response.body, 'geheim@example.org'
+  end
+
+  test 'Spiel ohne Ansetzung hat keine' do
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    assert_nil JSON.parse(response.body).first['game_days'].first['games'].first['referee_assignment']
+  end
+
+  test 'Vereinsansetzung nennt den stellenden Verein ohne Personen' do
+    club = create(:club, name: 'SR-Verein Mitte')
+    RefereeAssignment.create!(game: @game, club: club, status: 'published', published_at: Time.current)
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    assignment = JSON.parse(response.body).first['game_days'].first['games'].first['referee_assignment']
+    assert_equal 'SR-Verein Mitte', assignment['club']
+    assert_equal [], assignment['referees']
+    assert_nil assignment['coach']
+  end
+
+  # Die fremde Liga derselben Halle steht unter other_game_days_in_hall. Deren
+  # Schiedsrichter gehen den Verein nichts an, er richtet sie nicht aus.
+  test 'fremde Spieltage derselben Halle tragen keine Schiedsrichter' do
+    foreign = build_foreign_game_day
+    publish_assignment(foreign.games.first, referee1: create(:referee, email: 'fremd@example.org'))
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    other = JSON.parse(response.body).first['other_game_days_in_hall']
+    assert_equal([foreign.id], other.map { |gd| gd['id'] })
+    assert_nil other.first['games']
+    assert_not_includes response.body, 'fremd@example.org'
+  end
+
   private
 
   def login(user)
@@ -814,9 +906,12 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
                           number: number, date: @date)
     home = create(:team, league: league, club: @host_club)
     3.times do |i|
-      Game.create!(game_day: day, home_team: home,
-                   guest_team: create(:team, league: league, club: create(:club)),
-                   start_time: "1#{i}:00")
+      game = Game.create!(game_day: day, home_team: home,
+                          guest_team: create(:team, league: league, club: create(:club)),
+                          start_time: "1#{i}:00")
+      # Mit veröffentlichter Ansetzung, damit der Zähler auch das Vorladen der
+      # Schiedsrichter und des Coaches prüft (game_day_games_json).
+      publish_assignment(game, referee1: create(:referee), referee2: create(:referee), coach: create(:referee))
     end
     user.update!(teams: user.teams + [home.id])
     day
@@ -845,5 +940,9 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
                  guest_team: create(:team, league: league, club: create(:club)),
                  start_time: '18:00')
     day
+  end
+
+  def publish_assignment(game, **people)
+    RefereeAssignment.create!(game: game, status: 'published', published_at: Time.current, **people)
   end
 end

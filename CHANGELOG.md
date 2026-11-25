@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Ausrichter sieht die angesetzten Schiedsrichter mit E-Mail**: Die Heimspiel-Übersicht (`GET user/secretary_game_days`) liefert an jedem eigenen Spieltag die Spiele mit der veröffentlichten Schiedsrichteransetzung: Name, Gast-Kennzeichen und E-Mail der Schiedsrichter und des Coaches, bei einer Vereinsansetzung den stellenden Verein. Sichtbar für Vereins- und Teammanager des Ausrichters (dieselbe Prüfung wie beim Sekretariatslink), nicht für den Gastverein. Vorläufige Ansetzungen liefern nur den Status. Bisher kamen die Adressen nur mit der Ausrichter-Mail bei Veröffentlichung, und Gast-Schiedsrichter stehen in keiner Vereinsliste. Telefonnummern bleiben außen vor.
+
 ## [2.9.0] - 2026-11-23
 
 ### Neu
