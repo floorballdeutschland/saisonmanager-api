@@ -270,7 +270,7 @@ class GameDaySecretaryLinksController < ApplicationController
       league_id: game_day.league_id,
       league: game_day.league&.name,
       arena: { name: game_day.arena&.name },
-      games: game_day.games.sort_by { |g| [g.start_time.to_s, g.id] }.map { |g| thumbnail_game_json(g) }
+      games: game_day.games.sort_by { |g| [g.start_time_sort_key, g.id] }.map { |g| thumbnail_game_json(g) }
     }
   end
 
@@ -424,7 +424,7 @@ class GameDaySecretaryLinksController < ApplicationController
   # ist, bekäme sonst die Schiedsrichter fremder Ausrichter derselben Halle.
   # Der Gastverein sieht den Spieltag gar nicht.
   def game_day_games_json(game_day)
-    game_day.games.sort_by { |g| [g.start_time.to_s, g.id] }.map do |game|
+    game_day.games.sort_by { |g| [g.start_time_sort_key, g.id] }.map do |game|
       {
         id: game.id,
         game_number: game.game_number,

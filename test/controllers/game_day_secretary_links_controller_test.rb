@@ -946,6 +946,19 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
                  "#{queries_for_four} bei vier — Preloading fehlt"
   end
 
+  test 'Spiele stehen nach Anstoß sortiert, auch ohne führende Null' do
+    late = @game # 14:00
+    early = Game.create!(game_day: @game_day, home_team: @home, guest_team: @guest, start_time: '9:30')
+    open_time = Game.create!(game_day: @game_day, home_team: @home, guest_team: @guest, start_time: '')
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    ids = JSON.parse(response.body).first['game_days'].first['games'].map { |g| g['id'] }
+    assert_equal [early.id, late.id, open_time.id], ids
+  end
+
   private
 
   def login(user)

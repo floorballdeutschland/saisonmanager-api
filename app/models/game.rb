@@ -148,6 +148,16 @@ class Game < ApplicationRecord
             numericality: { only_integer: true, greater_than_or_equal_to: 0 },
             allow_nil: true
 
+  # Sortierschlüssel für den Anstoß in Minuten seit Mitternacht. `start_time`
+  # ist eine Textspalte: Als Text käme "9:00" hinter "14:00", und ein leerer
+  # Wert stünde vor allen anderen. Ohne lesbare Zeit sortiert das Spiel ans Ende.
+  START_TIME_PATTERN = /\A\s*(\d{1,2}):(\d{2})/
+
+  def start_time_sort_key
+    match = START_TIME_PATTERN.match(start_time.to_s)
+    match ? (match[1].to_i * 60) + match[2].to_i : 24 * 60
+  end
+
   def match_record_closed?
     %w[match_record_closed finalized].include? game_status
   end
