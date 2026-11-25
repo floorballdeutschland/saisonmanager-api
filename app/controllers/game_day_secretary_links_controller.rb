@@ -164,7 +164,7 @@ class GameDaySecretaryLinksController < ApplicationController
   end
 
   # Spiele der Übersicht samt Ansetzung: game_day_games_json liest daraus die
-  # Schiedsrichter und den Coach. Ohne das Vorladen kämen je Spiel bis zu fünf
+  # Schiedsrichter und den Coach. Ohne das Vorladen kämen je Spiel bis zu vier
   # Abfragen dazu.
   OVERVIEW_GAME_INCLUDES = [
     :home_team, :guest_team,
@@ -382,8 +382,8 @@ class GameDaySecretaryLinksController < ApplicationController
       # berechtigt ist. Weicht das von den Spieltagen der Halle ab, soll das
       # Frontend es benennen können statt stillschweigend weniger zu liefern.
       game_days: covered.map do |gd|
-        game_day_stub(gd).merge(overlay_link: overlay_link_json(overlays_by_game_day[gd.id]),
-                                games: game_day_games_json(gd))
+        stub = game_day_stub(gd).merge(overlay_link: overlay_link_json(overlays_by_game_day[gd.id]))
+        host_manager_of?(gd) ? stub.merge(games: game_day_games_json(gd)) : stub
       end,
       other_game_days_in_hall: (game_days - covered).map { |gd| game_day_stub(gd) },
       link: link && {
@@ -412,14 +412,17 @@ class GameDaySecretaryLinksController < ApplicationController
     }
   end
 
-  # Die Spiele eines eigenen Spieltags mit der Schiedsrichteransetzung. Der
-  # Ausrichter bekommt Namen und E-Mail der angesetzten Personen ohnehin per
-  # Mail (GameDayMailer#published_referees_to_host); hier stehen sie zusätzlich
-  # dauerhaft, damit der Verein die Gespanne einladen kann, ohne die Mail zu
-  # suchen. Gäste stehen in keiner Vereinsliste, für sie ist das der einzige Weg.
+  # Die Spiele eines eigenen Spieltags mit der Schiedsrichteransetzung, damit
+  # der Verein die Gespanne einladen kann. Dieselben Personendaten stehen in der
+  # Ausrichter-Mail (GameDayMailer#published_referees_to_host), die aber erst
+  # rausgeht, wenn alle Spiele des Spieltags veröffentlicht sind, und nur an
+  # hinterlegte Vereinsadressen. Gäste stehen in keiner Vereinsliste, für sie
+  # ist das der einzige dauerhafte Weg.
   #
-  # Nur an `covered`, also nur für VM und TM des Ausrichters (siehe
-  # may_manage_game_day_link?); der Gastverein sieht den Spieltag gar nicht.
+  # Nur für VM und TM des Ausrichters (host_manager_of?), nicht über den
+  # Admin-/SBK-Zweig von may_manage_game_day_link?: Wer zugleich SBK und VM
+  # ist, bekäme sonst die Schiedsrichter fremder Ausrichter derselben Halle.
+  # Der Gastverein sieht den Spieltag gar nicht.
   def game_day_games_json(game_day)
     game_day.games.sort_by { |g| [g.start_time.to_s, g.id] }.map do |game|
       {

@@ -875,6 +875,77 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes response.body, 'fremd@example.org'
   end
 
+  test 'zwei eigene Spieltage einer Halle tragen je ihre eigenen Schiedsrichter' do
+    second = build_parallel_game_day(@go)
+    publish_assignment(@game, referee1: create(:referee, email: 'erster@example.org'))
+    publish_assignment(second.games.first, referee1: create(:referee, email: 'zweiter@example.org'))
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    by_day = JSON.parse(response.body).first['game_days'].index_by { |gd| gd['id'] }
+    emails = lambda do |day|
+      day['games'].flat_map { |g| g.dig('referee_assignment', 'referees').map { |r| r['email'] } }
+    end
+    assert_equal([@game.id], by_day[@game_day.id]['games'].map { |g| g['id'] })
+    assert_equal ['erster@example.org'], emails.call(by_day[@game_day.id])
+    assert_equal([second.games.first.id], by_day[second.id]['games'].map { |g| g['id'] })
+    assert_equal ['zweiter@example.org'], emails.call(by_day[second.id])
+  end
+
+  # Mischrolle: SBK eines Spielbetriebs und zugleich VM. Den fremden Spieltag
+  # derselben Halle deckt der SBK-Zweig von may_manage_game_day_link? ab, er
+  # steht deshalb unter game_days. Die Schiedsrichter-Kontakte dort gehen die
+  # SBK-Rolle aber nichts an, die sieht sie auch sonst nirgends.
+  test 'SBK-Rolle neben VM liefert keine Schiedsrichter fremder Ausrichter' do
+    foreign_club = create(:club)
+    foreign_league = create(:league, game_operation: @go)
+    foreign_day = create_game_day(foreign_league, foreign_club)
+    foreign_game = Game.create!(game_day: foreign_day,
+                                home_team: create(:team, league: foreign_league, club: foreign_club),
+                                guest_team: create(:team, league: foreign_league, club: create(:club)),
+                                start_time: '18:00')
+    publish_assignment(foreign_game, referee1: create(:referee, email: 'fremd@example.org'))
+    publish_assignment(@game, referee1: create(:referee, email: 'eigen@example.org'))
+    user = create(:user, permissions: [
+      { 'user_group_id' => 2, 'game_operation_id' => @go.id },
+      { 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => @host_club.id }
+    ])
+    login(user)
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    by_day = JSON.parse(response.body).first['game_days'].index_by { |gd| gd['id'] }
+    assert by_day.key?(foreign_day.id), 'Vorbedingung: der SBK-Zweig deckt den fremden Spieltag ab'
+    assert_nil by_day[foreign_day.id]['games']
+    assert_not_includes response.body, 'fremd@example.org'
+    assert_includes response.body, 'eigen@example.org'
+  end
+
+  # Der Zähler oben läuft durch load_with_games (Spieltage ohne Halle). Das hier
+  # ist der Normalfall mit Halle über sibling_game_days.
+  test 'die Abfragezahl der Übersicht wächst nicht mit den Spielen einer Halle' do
+    publish_assignment(@game, referee1: create(:referee), referee2: create(:referee), coach: create(:referee))
+    login(create(:user, :vm, club_id: @host_club.id))
+    queries_for_one = count_queries { get '/api/v2/user/secretary_game_days' }
+    assert_response :success
+
+    3.times do
+      day = build_parallel_game_day(@go)
+      publish_assignment(day.games.first, referee1: create(:referee), referee2: create(:referee),
+                                          coach: create(:referee))
+    end
+    queries_for_four = count_queries { get '/api/v2/user/secretary_game_days' }
+
+    assert_response :success
+    assert_equal 4, JSON.parse(response.body).first['game_days'].size
+    assert_equal queries_for_one, queries_for_four,
+                 "Abfragen: #{queries_for_one} bei einem Spieltag, " \
+                 "#{queries_for_four} bei vier — Preloading fehlt"
+  end
+
   private
 
   def login(user)
