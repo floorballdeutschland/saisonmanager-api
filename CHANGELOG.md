@@ -11,7 +11,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Neu
 
-- **Ausrichter sieht die angesetzten Schiedsrichter mit E-Mail**: Die Heimspiel-Übersicht (`GET user/secretary_game_days`) liefert an jedem eigenen Spieltag die Spiele samt Schiedsrichteransetzung. Ist sie veröffentlicht: Name, Gast-Kennzeichen und E-Mail der Schiedsrichter und des Coaches, bei einer Vereinsansetzung den stellenden Verein; vorläufig nur den Status. Sichtbar nur für Vereins- und Teammanager des Ausrichters, nicht für den Gastverein und nicht über eine zusätzliche SBK-Rolle für fremde Ausrichter derselben Halle. Bisher kamen die Adressen nur mit der Ausrichter-Mail, sobald alle Spiele des Spieltags veröffentlicht waren, und Gast-Schiedsrichter stehen in keiner Vereinsliste. Telefonnummern bleiben außen vor. Die Spiele stehen nach Anstoß sortiert, auch bei Zeiten ohne führende Null (`Game#start_time_sort_key`); dieselbe Sortierung gilt jetzt im Saisonabruf für die Thumbnails.
+- **Ausrichter sieht die angesetzten Schiedsrichter mit E-Mail**: Die Heimspiel-Übersicht (`GET user/secretary_game_days`) liefert an jedem eigenen Spieltag die Spiele samt Schiedsrichteransetzung. Ist sie veröffentlicht: Name, Gast-Kennzeichen und E-Mail der Schiedsrichter und des Coaches, bei einer Vereinsansetzung den stellenden Verein; vorläufig nur den Status. Sichtbar nur für Vereins- und Teammanager des Ausrichters, nicht für den Gastverein und nicht über eine zusätzliche SBK-Rolle für fremde Ausrichter derselben Halle. Bisher kamen die Adressen nur mit der Ausrichter-Mail, sobald alle Spiele des Spieltags veröffentlicht waren, und Gast-Schiedsrichter stehen in keiner Vereinsliste. Telefonnummern bleiben außen vor.
+
+### Behoben
+
+- **Spiele nach Anstoß sortiert, nicht nach Text**: Der Saisonabruf für die Thumbnails (`GET user/secretary_game_days/season`) sortierte `start_time` als Text, "9:30" stand dadurch hinter "14:00" und Spiele ohne Zeit vorn. `Game#start_time_sort_key` rechnet in Minuten, liest auch die Altform mit Punkt ("12.15", gut 4000 Spiele älterer Saisons) und stellt Spiele ohne lesbare Zeit ans Ende. Dieselbe Sortierung gilt für die neue Schiedsrichter-Liste der Heimspiel-Übersicht.
 
 ## [2.9.0] - 2026-11-23
 

@@ -68,7 +68,7 @@ module GameDayLinkAuthorization
   end
 
   # Die Mannschaften dieses Spieltags, die der/die Angemeldete als Teammanager:in
-  # betreut. Verglichen wird anschließend in may_manage_game_day_link? über
+  # betreut. Verglichen wird anschließend in host_manager_of? über
   # `all_club_ids`: Eine Spielgemeinschaft, die unter ihrem Partnerverein
   # ausrichtet, fiele sonst durch, obwohl sie am eigenen Tisch sitzt.
   def own_teams(game_day)
