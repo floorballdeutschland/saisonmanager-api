@@ -2353,6 +2353,12 @@ class Game < ApplicationRecord
       Rails.cache.delete("leagues/#{league_id}/#{key}")
     end
 
+    # Folgeligen, die Punkte (oder Tore) aus dieser Liga als Vorrunde
+    # übernehmen, rechnen ihre Tabelle mit diesem Ergebnis (LeaguePrerounds).
+    League.dependent_on_preround(league_id).each do |dependent_id|
+      Rails.cache.delete("leagues/#{dependent_id}/table")
+    end
+
     # Spieltag-Schedule gezielt löschen (kein delete_matched: das würde bei
     # jedem Game-Save alle Cache-Keys unter Lock scannen). Wechselt ein Spiel
     # den Spieltag, bleibt der alte Key bis zum TTL-Ablauf (≤5 min) stale –

@@ -65,8 +65,11 @@ paths:
       summary: Tabelle einer Liga
       description: |
         Berechnete Tabelle inkl. Position und Sortierwert. Berücksichtigt
-        Direktbegegnungen (`league_id_direct_encounters`) und Vorrunden-
-        Punkte (`league_id_preround`), falls konfiguriert.
+        Direktbegegnungen (`league_id_direct_encounters`) und Werte aus
+        Vorrunden-Ligen (`league_ids_preround`), falls konfiguriert. Was
+        übernommen wird, legt `preround_transfer_scope` der Liga fest:
+        `points` (Vorgabe), `goals` (Punkte und Tore) oder `full` (komplette
+        Bilanz). Übernommene Werte stehen zusätzlich in `preround`.
       tags: [Leagues (public)]
       parameters:
         - $ref: "#/components/parameters/LeagueId"
@@ -290,6 +293,18 @@ components:
           type: integer
         sort:
           type: integer
+        preround_points:
+          type: integer
+          description: Aus den Vorrunden übernommene Punkte (fehlt, wenn keine).
+        preround:
+          type: object
+          description: |
+            Aus den Vorrunden übernommene Werte, je nach
+            `preround_transfer_scope` der Liga (`points`, `goals_scored`,
+            `goals_received`, `games`, `won`, `draw`, `lost`, `won_ot`,
+            `lost_ot`). Fehlt, wenn nichts übernommen wurde.
+          additionalProperties:
+            type: integer
 
     ScorerEntry:
       type: object

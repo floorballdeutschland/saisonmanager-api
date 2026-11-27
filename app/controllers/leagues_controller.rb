@@ -501,25 +501,22 @@ class LeaguesController < ApplicationController
       return render json: { message: 'Keine Berechtigung!' }, status: :forbidden
     end
 
-    preround_league_id = league.league_id_preround
-    unless preround_league_id.present?
-      return render json: { message: 'Keine Vorrunden-Liga konfiguriert.' }, status: :unprocessable_entity
+    preround_leagues = league.preround_leagues
+    if preround_leagues.empty?
+      message = league.preround_league_ids.empty? ? 'Keine Vorrunden-Liga konfiguriert.' : 'Vorrunden-Liga nicht gefunden.'
+      status = league.preround_league_ids.empty? ? :unprocessable_entity : :not_found
+      return render json: { message: }, status:
     end
 
-    preround_league = League.find_by(id: preround_league_id)
-    unless preround_league
-      return render json: { message: 'Vorrunden-Liga nicht gefunden.' }, status: :not_found
-    end
-
-    current_team_by_club = league.teams.index_by(&:club_id)
-    preround_team_by_club = preround_league.teams.index_by(&:club_id)
+    matches = league.preround_team_matches(preround_teams: Team.where(league_id: preround_leagues.map(&:id)).to_a)
+    current_teams = league.teams.index_by(&:id)
 
     copied_count = 0
 
     ActiveRecord::Base.transaction do
-      current_team_by_club.each do |club_id, current_team|
-        preround_team = preround_team_by_club[club_id]
-        next unless preround_team
+      matches.each do |current_team_id, preround_team|
+        current_team = current_teams[current_team_id]
+        next unless current_team
 
         preround_players = Player.find_by_team_id(preround_team.id).uniq(&:id)
 
@@ -567,7 +564,7 @@ class LeaguesController < ApplicationController
   COPYABLE_LEAGUE_ATTRIBUTES = %w[
     game_operation_id name short_name league_category_id league_class_id
     league_system_id league_type league_modus table_modus has_preround
-    preround_point_modus preround_scorer_modus female enable_scorer field_size
+    preround_point_modus preround_transfer_scope preround_scorer_modus female enable_scorer field_size
     periods period_length overtime_length order_key before_deadline minimum_age
     female_overage_years direct_comparison required_documents age_group parental_consent_required
     game_duration_minutes referee_feedback_enabled
@@ -1204,13 +1201,13 @@ class LeaguesController < ApplicationController
     params.require(:league).permit(:before_deadline, :deadline, :minimum_age, :female_overage_years, :female, :age_group, :game_operation_id,
                                    :league_category_id, :league_class_id, :league_system_id, :name, :order_key,
                                    :short_name, :enable_scorer, :field_size, :league_modus, :league_id_preseason,
-                                   :league_id_preround, :has_preround, :preround_point_modus, :preround_scorer_modus,
-                                   :league_id_direct_encounters,
+                                   :league_id_preround, :has_preround, :preround_point_modus, :preround_transfer_scope,
+                                   :preround_scorer_modus, :league_id_direct_encounters,
                                    :table_modus, :direct_comparison, :periods, :period_length, :overtime_length,
                                    :game_duration_minutes,
                                    :banner_link_url, :parental_consent_required,
                                    :referee_feedback_enabled, :stream_playlist,
-                                   required_documents: [])
+                                   required_documents: [], league_ids_preround: [])
   end
 
   # Alle Spiele der Liga als flache Zeilen in der Spaltenfolge von
@@ -1463,7 +1460,8 @@ class LeaguesController < ApplicationController
   # würde also stillschweigend ins Leere zeigende Tabellen/Auswertungen erzeugen.
   def other_leagues_referencing?(league)
     League.where(
-      'league_id_preseason = :id OR league_id_preround = :id OR league_id_direct_encounters = :id',
+      'league_id_preseason = :id OR league_id_preround = :id OR league_id_direct_encounters = :id ' \
+      'OR :id = ANY(league_ids_preround)',
       id: league.id
     ).exists?
   end
