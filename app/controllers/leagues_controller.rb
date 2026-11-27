@@ -508,7 +508,7 @@ class LeaguesController < ApplicationController
       return render json: { message: }, status:
     end
 
-    matches = league.preround_team_matches(preround_teams: Team.where(league_id: preround_leagues.map(&:id)).to_a)
+    matches = league.preround_team_matches
     current_teams = league.teams.index_by(&:id)
 
     copied_count = 0

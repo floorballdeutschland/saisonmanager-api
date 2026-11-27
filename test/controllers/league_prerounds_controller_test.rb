@@ -89,6 +89,20 @@ class LeaguePreroundsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 2, JSON.parse(response.body)['copied']
   end
 
+  test 'copy_preround_licenses findet Vorrunden-Mannschaften über cup_leagues' do
+    club = create(:club)
+    stamm = create(:league, game_operation: @go)
+    pokal_team = create(:team, league: stamm, club: club, name: 'P', cup_leagues: [@staffel_a.id])
+    create(:team, league: @folge, club: club, name: 'P')
+    create(:player, with_licenses: [{ team: pokal_team, status: License::APPROVED }])
+    @folge.update!(league_ids_preround: [@staffel_a.id])
+
+    post "/api/v2/admin/leagues/#{@folge.id}/copy_preround_licenses"
+
+    assert_response :success
+    assert_equal 1, JSON.parse(response.body)['copied']
+  end
+
   test 'zweite Vorrunde blockiert die Löschung ebenso' do
     @folge.update!(league_ids_preround: [@staffel_a.id, @staffel_b.id])
 

@@ -78,8 +78,7 @@ module LeaguePrerounds
   #
   # Spielt dieselbe Mannschaft (gleiche ID, etwa über `cup_leagues`) in Vorrunde
   # und Folgeliga, ist sie ohne Umweg sie selbst.
-  def preround_team_matches(preround_teams: Team.where(league_id: preround_league_ids).to_a,
-                            current_teams: teams.to_a)
+  def preround_team_matches(preround_teams: all_preround_teams, current_teams: teams.to_a)
     candidates_by_club = preround_teams.group_by(&:club_id)
     current_count_by_club = current_teams.group_by(&:club_id).transform_values(&:size)
 
@@ -104,6 +103,15 @@ module LeaguePrerounds
         )
       end
     end
+  end
+
+  # Alle Mannschaften der Vorrunden, wie League#teams auch die, die nur über
+  # `cup_leagues` dazugehören (Pokal- und Playoff-Ligen).
+  def all_preround_teams
+    ids = preround_league_ids
+    return [] if ids.empty?
+
+    Team.where(league_id: ids).or(Team.where('cup_leagues && ARRAY[?]::integer[]', ids)).to_a
   end
 
   private
