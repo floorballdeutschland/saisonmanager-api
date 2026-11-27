@@ -6,6 +6,7 @@ class League < ApplicationRecord
   include LeagueLogo
   include LeagueRefereeAssignment
   include LeagueCompetition
+  include LeaguePrerounds
   include LeagueLicenseSuspensions
 
   has_many :game_days
@@ -398,7 +399,9 @@ class League < ApplicationRecord
 
       league_id_direct_encounters:,
       league_id_preround:,
+      league_ids_preround: preround_league_ids,
       preround_point_modus:,
+      preround_transfer_scope:,
       # league_id_preseason: league_id_preseason,
       # preround_scorer_modus: preround_scorer_modus,
       table_modus:,
@@ -613,12 +616,14 @@ class League < ApplicationRecord
     sorted_results.compact
   end
 
-  def table
+  # `visited` sind die Ligen, deren Tabelle gerade schon berechnet wird. Es
+  # schützt die Vorrundenkette (LeaguePrerounds) vor Ringen.
+  def table(visited: [id])
     g = games
     results = evaluate_table_results(g)
 
     apply_direct_encounter_games!(results) if league_id_direct_encounters.present?
-    apply_preround_points!(results) if league_id_preround.present? && preround_point_modus.present?
+    apply_preround_points!(results, visited)
 
     sorted_results = if direct_comparison
                        sort_by_direct_comparison(results.values, g)
@@ -759,32 +764,6 @@ class League < ApplicationRecord
       qual = quals.find { |q| entry[:position].between?(q.rank_from, q.rank_to) }
       entry[:qualification_type] = qual&.qualification_type
       entry[:qualification_label] = qual&.label
-    end
-  end
-
-  def apply_preround_points!(results)
-    preround_league = League.find_by(id: league_id_preround)
-    return unless preround_league
-
-    multiplier = preround_point_modus == 'half' ? 0.5 : 1.0
-    preround_table = preround_league.table
-
-    preround_team_ids = preround_table.map { |e| e[:team_id] }
-    preround_club_map = Team.where(id: preround_team_ids).pluck(:id, :club_id).to_h
-    preround_points_by_club = preround_table.each_with_object({}) do |entry, map|
-      club_id = preround_club_map[entry[:team_id]]
-      map[club_id] = (entry[:points] * multiplier).floor if club_id
-    end
-
-    current_club_map = Team.where(id: results.keys).pluck(:id, :club_id).to_h
-
-    results.each do |team_id, entry|
-      club_id = current_club_map[team_id]
-      bonus = preround_points_by_club[club_id] || 0
-      next if bonus.zero?
-
-      entry[:points] += bonus
-      entry[:preround_points] = bonus
     end
   end
 

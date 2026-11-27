@@ -9,6 +9,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Mehrere Vorrunden-Ligen und wählbare Übernahme in die Folgeliga**: Eine Liga kann jetzt mehrere Vorrunden haben (`league_ids_preround`), etwa Staffel A und B vor einer Zwischen-, Meister- oder Platzierungsrunde (Anfrage aus Bayern). Bisher ließ sich nur eine eintragen, und die Mannschaften der zweiten Staffel gingen ohne ihre Punkte in die Folgerunde. Neu ist auch die Einstellung `preround_transfer_scope`, die festlegt, was übernommen wird: `points` (nur Punkte, wie bisher und Vorgabe), `goals` (Punkte, erzielte und erhaltene Tore, damit auch die Tordifferenz) oder `full` (die komplette Bilanz mit Spielen, Siegen, Unentschieden und Niederlagen). „Halb“ (`preround_point_modus`) gilt nur für die Punkte und rundet erst nach der Summe über alle Staffeln ab. Die Tabelle liefert die übernommenen Werte zusätzlich in `preround`. `league_id_preround` bleibt erhalten und zeigt auf die erste Vorrunde; ein Client, der nur dieses Feld schickt, setzt damit genau diese eine Vorrunde. `copy_preround_licenses` kopiert aus allen Vorrunden. Zwei Migrationen ohne Datenverlust; die neue Spalte wird aus `league_id_preround` befüllt.
+
+### Behoben
+
+- **Vorrundenpunkte bei Vereinen mit mehreren Mannschaften**: Die Übernahme ordnete die Mannschaften nur über den Verein zu. Hatte ein Verein zwei Mannschaften in der Vorrunde, gewann die zuletzt gelesene, und zwei Mannschaften desselben Vereins in der Folgeliga bekamen dieselben Punkte. Jetzt entscheidet bei mehreren Mannschaften eines Vereins der Name, dann das Kürzel; bleibt es mehrdeutig, wird nichts übernommen statt fremder Punkte. Spielt dieselbe Mannschaft (über `cup_leagues`) in beiden Ligen, wird sie direkt zugeordnet.
+- **Tabelle der Folgeliga bis zu 5 Minuten veraltet**: Eine Korrektur in einem Vorrundenspiel leerte nur den Cache der Vorrunde. Jetzt werden auch die Tabellen der Folgeligen geleert, über mehrere Stufen.
+- **Ring zwischen Vorrunden-Ligen**: Zwei Ligen, die sich gegenseitig als Vorrunde führten, ließen die Tabellenberechnung endlos laufen. Das Speichern weist einen solchen Ring jetzt ab, und die Berechnung bricht ihn zusätzlich ab.
+
 ## [2.9.0] - 2026-11-23
 
 ### Neu

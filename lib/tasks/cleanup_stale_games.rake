@@ -102,7 +102,8 @@ namespace :cleanup do
   def league_reference_blockers(league)
     blockers = []
     refs = League.where.not(id: league.id).where(
-      'league_id_preseason = :id OR league_id_preround = :id OR league_id_direct_encounters = :id',
+      'league_id_preseason = :id OR league_id_preround = :id OR league_id_direct_encounters = :id ' \
+      'OR :id = ANY(league_ids_preround)',
       id: league.id
     ).pluck(:id)
     blockers << "referenziert von Ligen (Vorsaison/Vorrunde/dir. Vergleich): #{refs.join(', ')}" if refs.any?
