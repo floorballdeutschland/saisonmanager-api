@@ -1,0 +1,59 @@
+# gitleaks-Konfiguration (https://github.com/gitleaks/gitleaks)
+#
+# Gleicher Kern in saisonmanager, saisonmanager-api und saisonmanager-docker.
+# Alle drei Repos sind öffentlich: was hier durchrutscht, ist veröffentlicht.
+#
+# Lokal:  gitleaks git --no-banner          (ganze Historie)
+#         gitleaks git --pre-commit --staged (das tut der Pre-Commit-Hook)
+#
+# Altfunde, die geprüft und bewertet sind, stehen mit Fingerprint in
+# .gitleaksignore. Neue Ausnahmen bitte als möglichst enge Allowlist hier,
+# nie als Pfad-Ausnahme für alle Regeln.
+
+title = "saisonmanager"
+
+[extend]
+useDefault = true
+
+# --- Eigene Formate ---------------------------------------------------------
+
+# ApiKey#generate: SecureRandom.hex(32). Der Prerender-Key aus
+# src/environments/.api-key hat genau dieses Format.
+[[rules]]
+id = "saisonmanager-api-key"
+description = "Saisonmanager-API-Key (64 Hex-Zeichen) an einem Key-Bezeichner"
+regex = '''(?i)(?:x-api-key|api[_-]?key|prerender_api_key)["'\s]*[:=]\s*["']?([0-9a-f]{64})\b'''
+secretGroup = 1
+keywords = ["api-key", "api_key", "apikey", "x-api-key"]
+
+[[rules]]
+id = "rails-master-key"
+description = "RAILS_MASTER_KEY als Variable (die Datei master.key fängt secret-file)"
+regex = '''(?i)rails_master_key["'\s]*[:=]\s*["']?([0-9a-f]{32})\b'''
+secretGroup = 1
+keywords = ["rails_master_key"]
+
+[[rules]]
+id = "rails-secret-key-base"
+description = "SECRET_KEY_BASE (Hex, mindestens 64 Zeichen)"
+regex = '''(?i)secret_key_base["'\s]*[:=]\s*["']?([0-9a-f]{64,})\b'''
+secretGroup = 1
+keywords = ["secret_key_base"]
+
+# Dateien, die per .gitignore draußen bleiben und nur Geheimnisse enthalten.
+# Die Regel schlägt schon an, wenn die Datei überhaupt im Commit landet
+# (z. B. nach `git add -f`).
+[[rules]]
+id = "secret-file"
+description = "Geheimnisdatei im Commit (.env, master.key, config/credentials/*.key, .api-key)"
+path = '''(?:^|/)(?:\.env|master\.key|\.api-key|config/credentials/[^/]+\.key)$'''
+
+# --- Ausnahmen --------------------------------------------------------------
+
+# Tests setzen erfundene Passwörter, Stream-Keys und Key-Digests. Nur die
+# generische Regel ist hier abgeschaltet. Anbieter-Formate (AWS, Azure,
+# Google, ...) und die eigenen Regeln oben greifen auch in test/.
+[[allowlists]]
+description = "Erfundene Testwerte"
+targetRules = ["generic-api-key"]
+paths = ['''(?:^|/)test/''']

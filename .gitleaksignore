@@ -1,0 +1,11 @@
+# Geprüfte Altfunde aus der Historie (Einmalscan 28.11.2026, gitleaks 8.30.1).
+# Format: <commit>:<datei>:<regel>:<zeile>. Fehlalarme in test/ deckt die
+# Allowlist in .gitleaks.toml ab.
+
+# Legacy-Import: Spaltenname unterschrift_kapitain1 neben einem Literal, kein Geheimnis.
+42d197ec3da4eccb5a57fd5525104ba4d0b5a279:lib/tasks/legacy_import/reconstruct_nwuv_2013_2014.py:generic-api-key:167
+42d197ec3da4eccb5a57fd5525104ba4d0b5a279:lib/tasks/legacy_import/reconstruct_nwuv_2013_2014.py:generic-api-key:200
+4acf01aa3998f766d65634d6fb863f2b9b7c63c1:lib/tasks/legacy_import/export_all.sql.tmpl:generic-api-key:66
+
+# RuboCop-Todo: Cop-Option no_mixed_keys, kein Geheimnis.
+988d9dcb111da5cc790b9994c8b5b37c6a9cf481:.rubocop_todo.yml:generic-api-key:512
