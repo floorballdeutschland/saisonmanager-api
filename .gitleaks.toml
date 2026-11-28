@@ -28,25 +28,25 @@ keywords = ["api-key", "api_key", "apikey", "x-api-key"]
 
 [[rules]]
 id = "rails-master-key"
-description = "RAILS_MASTER_KEY bzw. Inhalt von config/master.key"
+description = "RAILS_MASTER_KEY als Variable (die Datei master.key fängt secret-file)"
 regex = '''(?i)rails_master_key["'\s]*[:=]\s*["']?([0-9a-f]{32})\b'''
 secretGroup = 1
 keywords = ["rails_master_key"]
 
 [[rules]]
 id = "rails-secret-key-base"
-description = "SECRET_KEY_BASE (128 Hex-Zeichen)"
+description = "SECRET_KEY_BASE (Hex, mindestens 64 Zeichen)"
 regex = '''(?i)secret_key_base["'\s]*[:=]\s*["']?([0-9a-f]{64,})\b'''
 secretGroup = 1
 keywords = ["secret_key_base"]
 
 # Dateien, die per .gitignore draußen bleiben und nur Geheimnisse enthalten.
-# Die Regel schlägt schon an, wenn die Datei ueberhaupt im Commit landet
+# Die Regel schlägt schon an, wenn die Datei überhaupt im Commit landet
 # (z. B. nach `git add -f`).
 [[rules]]
 id = "secret-file"
-description = "Geheimnisdatei im Commit (.env, master.key, .api-key)"
-path = '''(?:^|/)(?:\.env|master\.key|\.api-key|credentials\.yml\.enc\.key)$'''
+description = "Geheimnisdatei im Commit (.env, master.key, config/credentials/*.key, .api-key)"
+path = '''(?:^|/)(?:\.env|master\.key|\.api-key|config/credentials/[^/]+\.key)$'''
 
 # --- Ausnahmen --------------------------------------------------------------
 
