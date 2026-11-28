@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Geheimnis-Suche mit gitleaks**: Die CI durchsucht jetzt bei jedem Lauf die ganze Git-Historie mit [gitleaks](https://github.com/gitleaks/gitleaks) (8.30.1, feste Prüfsumme). Neben den Standardregeln erkennt `.gitleaks.toml` die Saisonmanager-API-Keys (64 Hex-Zeichen), `RAILS_MASTER_KEY`, `SECRET_KEY_BASE` und eingecheckte Geheimnisdateien (`.env`, `master.key`, `.api-key`). Geprüfte Altfunde stehen mit Fingerprint in `.gitleaksignore`, erfundene Testwerte in `test/` sind nur für die generische Regel ausgenommen. Lokaler Pre-Commit-Hook unter `.githooks/` (einmalig `git config core.hooksPath .githooks`). Gleiches gilt für Frontend und Docker-Repo.
+
 ## [2.9.0] - 2026-11-23
 
 ### Neu
